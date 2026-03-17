@@ -1,2 +1,2 @@
 # Curio-trinkets-bridge
-After using the Sinytra Connector with the Trinkets-based accessory mod, it can be equipped in the curio slot and function normally.
+看看能不能正常用吧，如果能正常用就转正了

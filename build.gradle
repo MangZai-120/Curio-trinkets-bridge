@@ -66,6 +66,9 @@ dependencies {
     // Curios API - 编译时依赖，运行时由用户安装
     compileOnly fg.deobf("top.theillusivec4.curios:curios-forge:${version_curios}:api")
     runtimeOnly fg.deobf("top.theillusivec4.curios:curios-forge:${version_curios}")
+
+    // Mixin 注解处理器
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
 
 jar {
