@@ -1,0 +1,37 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="curio_trinkets_bridge"
+version="${file.jarVersion}"
+displayName="Curio Trinkets Bridge"
+authors="MangZai"
+description='''
+自动将 Trinkets (Fabric) 饰品桥接至 Curios (Forge)。
+配合 Sinytra Connector 使用，让基于 Trinkets 的 Fabric 模组在 Forge 端自动使用 Curios 系统。
+
+Automatically bridges Trinkets (Fabric) accessories to Curios (Forge).
+Works with Sinytra Connector to let Trinkets-based Fabric mods use Curios on Forge.
+'''
+
+[[dependencies.curio_trinkets_bridge]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.curio_trinkets_bridge]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.curio_trinkets_bridge]]
+modId="curios"
+mandatory=true
+versionRange="[5.0,)"
+ordering="AFTER"
+side="BOTH"
