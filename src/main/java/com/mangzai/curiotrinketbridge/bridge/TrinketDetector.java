@@ -3,6 +3,7 @@ package com.mangzai.curiotrinketbridge.bridge;
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import top.theillusivec4.curios.api.CuriosApi;
 
 import java.lang.reflect.Method;
@@ -17,6 +18,8 @@ public final class TrinketDetector {
 
     private static Class<?> trinketInterface;
     private static Class<?> trinketItemClass;
+    private static Method getTrinketMethod;        // TrinketsApi.getTrinket(Item)
+    private static Object defaultTrinketHandler;   // 未注册物品的默认空处理器
     private static boolean checked = false;
     private static boolean available = false;
 
@@ -27,22 +30,33 @@ public final class TrinketDetector {
      */
     public static boolean isTrinketsLoaded() {
         if (!checked) {
+            checked = true;
             try {
                 trinketInterface = Class.forName("dev.emi.trinkets.api.Trinket");
                 trinketItemClass = Class.forName("dev.emi.trinkets.api.TrinketItem");
+
+                // 缓存 TrinketsApi.getTrinket 方法，用于查找注册的 Trinket 处理器
+                Class<?> apiClass = Class.forName("dev.emi.trinkets.api.TrinketsApi");
+                getTrinketMethod = apiClass.getMethod("getTrinket", Item.class);
+                // 获取默认处理器（对未注册物品返回的空处理器），用于辨别是否有自定义处理器
+                defaultTrinketHandler = getTrinketMethod.invoke(null, Items.AIR);
+
                 available = true;
                 CurioTrinketBridge.LOGGER.debug("Trinkets API 类已成功加载");
             } catch (ClassNotFoundException e) {
                 available = false;
                 CurioTrinketBridge.LOGGER.debug("Trinkets API 类未找到: {}", e.getMessage());
+            } catch (Exception e) {
+                // getTrinket 缓存失败，但 Trinkets 核心类存在
+                available = trinketInterface != null;
+                CurioTrinketBridge.LOGGER.debug("Trinkets API 处理器缓存失败（不影响核心功能）: {}", e.getMessage());
             }
-            checked = true;
         }
         return available;
     }
 
     /**
-     * 检查物品是否为 Trinket（实现 Trinket 接口或继承 TrinketItem）
+     * 检查物品是否为 Trinket（实现 Trinket 接口）
      */
     public static boolean isTrinket(Item item) {
         if (!isTrinketsLoaded()) return false;
@@ -58,28 +72,24 @@ public final class TrinketDetector {
     }
 
     /**
-     * 获取 TrinketItem 基类的 Class 对象
+     * 获取物品注册的 Trinket 行为处理器。
+     * <p>
+     * 优先返回通过 TrinketsApi.registerTrinket(item, handler) 注册的处理器。
+     * 如果物品未单独注册处理器（返回默认空处理器），则返回 null，
+     * 调用方应将物品本身作为 handler（适用于 TrinketItem 子类或直接实现 Trinket 的物品）。
+     *
+     * @param item 要查询的物品
+     * @return 注册的 Trinket 处理器，未找到自定义处理器时返回 null
      */
-    public static Class<?> getTrinketItemClass() {
-        isTrinketsLoaded();
-        return trinketItemClass;
-    }
-
-    /**
-     * 通过反射安全地调用 Trinket 上的方法
-     * @param trinket Trinket 实例
-     * @param methodName 方法名
-     * @param paramTypes 参数类型
-     * @param args 参数值
-     * @return 方法返回值，如果调用失败返回 null
-     */
-    public static Object invokeTrinketMethod(Object trinket, String methodName,
-                                              Class<?>[] paramTypes, Object... args) {
+    public static Object getTrinketHandler(Item item) {
+        if (getTrinketMethod == null) return null;
         try {
-            Method method = trinket.getClass().getMethod(methodName, paramTypes);
-            return method.invoke(trinket, args);
+            Object handler = getTrinketMethod.invoke(null, item);
+            // 与默认空处理器比较 — 如果相同说明没有自定义注册
+            if (handler == defaultTrinketHandler) return null;
+            return handler;
         } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.debug("调用 Trinket 方法 {} 失败: {}", methodName, e.getMessage());
+            CurioTrinketBridge.LOGGER.debug("获取 Trinket 处理器失败: {}", e.getMessage());
             return null;
         }
     }
@@ -93,15 +103,19 @@ public final class TrinketDetector {
         List<Item> registeredTrinkets = new ArrayList<>();
 
         for (Item item : BuiltInRegistries.ITEM) {
-            if (isTrinket(item)) {
-                try {
-                    TrinketCurioAdapter adapter = new TrinketCurioAdapter(item);
-                    CuriosApi.registerCurio(item, adapter);
-                    registeredTrinkets.add(item);
-                } catch (Exception e) {
-                    CurioTrinketBridge.LOGGER.warn("注册 Trinket 物品 {} 到 Curios 失败: {}",
-                            BuiltInRegistries.ITEM.getKey(item), e.getMessage());
-                }
+            if (!isTrinket(item)) continue;
+
+            try {
+                // 优先使用 TrinketsApi 注册的处理器，否则用物品自身（它实现了 Trinket 接口）
+                Object handler = getTrinketHandler(item);
+                if (handler == null) handler = item;
+
+                TrinketCurioAdapter adapter = new TrinketCurioAdapter(item, handler);
+                CuriosApi.registerCurio(item, adapter);
+                registeredTrinkets.add(item);
+            } catch (Exception e) {
+                CurioTrinketBridge.LOGGER.warn("注册 Trinket 物品 {} 到 Curios 失败: {}",
+                        BuiltInRegistries.ITEM.getKey(item), e.getMessage());
             }
         }
 

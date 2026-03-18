@@ -25,10 +25,12 @@ import java.util.UUID;
  * - canEquip → canEquip
  * - canUnequip → canUnequip
  * - getModifiers → getAttributeModifiers
+ * - getDropRule → getDropRule
  */
 public class TrinketCurioAdapter implements ICurioItem {
 
     private final Item trinketItem;
+    private final Object trinketHandler; // 实际的 Trinket 行为处理器（可能是 item 本身或独立对象）
 
     // 缓存反射方法
     private Method tickMethod;
@@ -40,8 +42,9 @@ public class TrinketCurioAdapter implements ICurioItem {
     private Method getDropRuleMethod;
     private boolean methodsCached = false;
 
-    public TrinketCurioAdapter(Item trinketItem) {
+    public TrinketCurioAdapter(Item trinketItem, Object trinketHandler) {
         this.trinketItem = trinketItem;
+        this.trinketHandler = trinketHandler;
     }
 
     /**
@@ -115,7 +118,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            tickMethod.invoke(trinketItem, stack, slotRef, slotContext.entity());
+            tickMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
         } catch (Exception e) {
             CurioTrinketBridge.LOGGER.debug("Trinket tick 调用失败: {}", e.getMessage());
         }
@@ -128,7 +131,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            onEquipMethod.invoke(trinketItem, stack, slotRef, slotContext.entity());
+            onEquipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
         } catch (Exception e) {
             CurioTrinketBridge.LOGGER.debug("Trinket onEquip 调用失败: {}", e.getMessage());
         }
@@ -141,7 +144,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            onUnequipMethod.invoke(trinketItem, stack, slotRef, slotContext.entity());
+            onUnequipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
         } catch (Exception e) {
             CurioTrinketBridge.LOGGER.debug("Trinket onUnequip 调用失败: {}", e.getMessage());
         }
@@ -154,7 +157,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            Object result = canEquipMethod.invoke(trinketItem, stack, slotRef, slotContext.entity());
+            Object result = canEquipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
             return result instanceof Boolean b ? b : true;
         } catch (Exception e) {
             return true;
@@ -168,7 +171,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            Object result = canUnequipMethod.invoke(trinketItem, stack, slotRef, slotContext.entity());
+            Object result = canUnequipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
             return result instanceof Boolean b ? b : true;
         } catch (Exception e) {
             return true;
@@ -190,9 +193,9 @@ public class TrinketCurioAdapter implements ICurioItem {
             Object slotRef = createSlotReference(slotContext);
             Object result;
             if (getModifiersMethod.getParameterCount() == 4) {
-                result = getModifiersMethod.invoke(trinketItem, stack, slotRef, slotContext.entity(), uuid);
+                result = getModifiersMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity(), uuid);
             } else {
-                result = getModifiersMethod.invoke(trinketItem, stack, slotRef, uuid);
+                result = getModifiersMethod.invoke(trinketHandler, stack, slotRef, uuid);
             }
             if (result instanceof Multimap<?, ?>) {
                 return (Multimap<Attribute, AttributeModifier>) result;
@@ -213,7 +216,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            Object result = getDropRuleMethod.invoke(trinketItem, ICurio.DropRule.DEFAULT,
+            Object result = getDropRuleMethod.invoke(trinketHandler, ICurio.DropRule.DEFAULT,
                     stack, slotRef, slotContext.entity());
             if (result != null) {
                 String name = result.toString();
