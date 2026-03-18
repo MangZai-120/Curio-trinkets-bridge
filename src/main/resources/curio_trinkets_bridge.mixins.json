@@ -3,6 +3,10 @@
   "package": "com.mangzai.curiotrinketbridge.mixin",
   "compatibilityLevel": "JAVA_17",
   "minVersion": "0.8.5",
+  "mixins": [
+    "TrinketsApiMixin",
+    "TrinketInventoryMixin"
+  ],
   "client": [
     "TrinketScreenManagerMixin"
   ],

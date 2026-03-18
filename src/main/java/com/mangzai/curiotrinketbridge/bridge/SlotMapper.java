@@ -15,27 +15,48 @@ public final class SlotMapper {
     // Trinkets "group/name" → Curios 标识符
     private static final Map<String, String> SLOT_MAP;
 
+    // Trinkets group name → Curios 默认槽位（当 group/name 没有精确匹配时按 group 回退）
+    private static final Map<String, String> GROUP_FALLBACK;
+
     static {
         Map<String, String> map = new HashMap<>();
         // 头部槽位
         map.put("head/hat", "head");
         map.put("head/face", "face");
+        map.put("head/mask", "face");
+        map.put("head/crown", "head");
         // 胸部槽位
         map.put("chest/back", "back");
         map.put("chest/cape", "cape");
         map.put("chest/necklace", "necklace");
+        map.put("chest/pendant", "necklace");
+        map.put("chest/amulet", "necklace");
         // 手部槽位
         map.put("hand/ring", "ring");
         map.put("hand/glove", "hands");
+        map.put("hand/bracelet", "hands");
         // 副手槽位
         map.put("offhand/ring", "ring");
         map.put("offhand/glove", "hands");
+        map.put("offhand/shield", "hands");
         // 腿部槽位
         map.put("legs/belt", "belt");
+        map.put("legs/charm", "charm");
         // 脚部槽位
         map.put("feet/aglet", "feet");
         map.put("feet/shoes", "feet");
+        map.put("feet/boots", "feet");
         SLOT_MAP = Collections.unmodifiableMap(map);
+
+        // Group 级别回退映射
+        Map<String, String> groupMap = new HashMap<>();
+        groupMap.put("head", "head");
+        groupMap.put("chest", "necklace");
+        groupMap.put("hand", "ring");
+        groupMap.put("offhand", "ring");
+        groupMap.put("legs", "belt");
+        groupMap.put("feet", "feet");
+        GROUP_FALLBACK = Collections.unmodifiableMap(groupMap);
     }
 
     private SlotMapper() {}
@@ -46,7 +67,19 @@ public final class SlotMapper {
      * @return Curios 槽位标识符，未知槽位返回 "curio"
      */
     public static String toCuriosSlot(String trinketSlot) {
-        return SLOT_MAP.getOrDefault(trinketSlot, "curio");
+        // 先精确匹配 group/name
+        String exact = SLOT_MAP.get(trinketSlot);
+        if (exact != null) return exact;
+
+        // 按 group 回退
+        int slash = trinketSlot.indexOf('/');
+        if (slash > 0) {
+            String group = trinketSlot.substring(0, slash);
+            String fallback = GROUP_FALLBACK.get(group);
+            if (fallback != null) return fallback;
+        }
+
+        return "charm";
     }
 
     /**

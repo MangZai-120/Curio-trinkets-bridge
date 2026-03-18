@@ -1,5 +1,5 @@
 {
   "replace": false,
   "entities": ["minecraft:player"],
-  "slots": ["face", "cape", "feet"]
+  "slots": ["head", "face", "necklace", "cape", "back", "ring", "hands", "belt", "charm", "feet"]
 }
