@@ -2,23 +2,23 @@ package com.mangzai.curiotrinketbridge.event;
 
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
+import com.mangzai.curiotrinketbridge.bridge.TrinketSlotResolver;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import top.theillusivec4.curios.api.CuriosApi;
-import top.theillusivec4.curios.api.CuriosCapability;
-import top.theillusivec4.curios.api.SlotContext;
-import top.theillusivec4.curios.api.type.capability.ICurio;
 import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
 import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Forge 事件处理器
@@ -46,6 +46,8 @@ public class BridgeEventHandler {
     /**
      * 拦截 Trinket 物品的右键使用，将其装备到 Curios 饰品栏。
      * 高优先级确保在 TrinketItem.use()（尝试装入已禁用的 Trinkets 库存）之前执行。
+     *
+     * <p>只尝试将物品装入通过标签映射确定的合法槽位，而非遍历所有槽位。
      */
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
@@ -55,33 +57,31 @@ public class BridgeEventHandler {
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty() || !TrinketDetector.isTrinket(stack.getItem())) return;
 
-        // 尝试装备到第一个可用的 Curios 饰品槽位
+        Item item = stack.getItem();
+        // 获取此物品允许装入的 Curios 槽位（基于 Trinkets 标签映射）
+        Set<String> validSlots = TrinketSlotResolver.getValidCuriosSlots(item);
+
         boolean[] equipped = {false};
         CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
             for (Map.Entry<String, ICurioStacksHandler> entry : handler.getCurios().entrySet()) {
                 if (equipped[0]) return;
 
                 String slotId = entry.getKey();
-                IDynamicStackHandler stacks = entry.getValue().getStacks();
+                // 只尝试标签允许的槽位
+                if (!validSlots.contains(slotId)) continue;
 
+                IDynamicStackHandler stacks = entry.getValue().getStacks();
                 for (int i = 0; i < stacks.getSlots(); i++) {
                     if (!stacks.getStackInSlot(i).isEmpty()) continue;
 
-                    // 通过 ICurio 能力检查是否允许装入此槽位
-                    SlotContext ctx = new SlotContext(slotId, player, i, false, true);
-                    ICurio curio = stack.getCapability(CuriosCapability.ITEM).resolve().orElse(null);
-
-                    if (curio != null && curio.canEquip(ctx)) {
-                        stacks.setStackInSlot(i, stack.split(1));
-                        equipped[0] = true;
-                        return;
-                    }
+                    stacks.setStackInSlot(i, stack.split(1));
+                    equipped[0] = true;
+                    return;
                 }
             }
         });
 
         if (equipped[0]) {
-            // 播放装备音效
             player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.ARMOR_EQUIP_GENERIC, SoundSource.PLAYERS, 1.0f, 1.0f);
             event.setCanceled(true);

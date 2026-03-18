@@ -1,8 +1,10 @@
 package com.mangzai.curiotrinketbridge;
 
+import com.mangzai.curiotrinketbridge.bridge.SlotMapper;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
 import com.mangzai.curiotrinketbridge.event.BridgeEventHandler;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -23,6 +25,8 @@ public class CurioTrinketBridge {
     public CurioTrinketBridge() {
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::onCommonSetup);
         MinecraftForge.EVENT_BUS.register(BridgeEventHandler.class);
+        // 注册数据包重载监听器，使槽位映射可通过 /reload 热更新
+        MinecraftForge.EVENT_BUS.addListener(this::onAddReloadListener);
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -34,5 +38,9 @@ public class CurioTrinketBridge {
                 LOGGER.warn("[CurioTrinketBridge] Trinkets API 未加载，桥接已禁用。请确保已安装 Sinytra Connector 和 Trinkets 模组");
             }
         });
+    }
+
+    private void onAddReloadListener(final AddReloadListenerEvent event) {
+        event.addListener(SlotMapper.INSTANCE);
     }
 }

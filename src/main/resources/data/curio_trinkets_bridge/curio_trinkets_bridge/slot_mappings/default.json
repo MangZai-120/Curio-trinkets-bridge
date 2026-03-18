@@ -1,0 +1,33 @@
+{
+  "replace": false,
+  "mappings": {
+    "head/hat": "head",
+    "head/face": "face",
+    "head/mask": "face",
+    "head/crown": "head",
+    "chest/back": "back",
+    "chest/cape": "cape",
+    "chest/necklace": "necklace",
+    "chest/pendant": "necklace",
+    "chest/amulet": "necklace",
+    "hand/ring": "ring",
+    "hand/glove": "hands",
+    "hand/bracelet": "hands",
+    "offhand/ring": "ring",
+    "offhand/glove": "hands",
+    "offhand/shield": "hands",
+    "legs/belt": "belt",
+    "legs/charm": "charm",
+    "feet/aglet": "feet",
+    "feet/shoes": "feet",
+    "feet/boots": "feet"
+  },
+  "group_fallback": {
+    "head": "head",
+    "chest": "necklace",
+    "hand": "ring",
+    "offhand": "ring",
+    "legs": "belt",
+    "feet": "feet"
+  }
+}
