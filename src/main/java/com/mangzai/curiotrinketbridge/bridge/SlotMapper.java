@@ -40,7 +40,6 @@ import java.util.*;
 public final class SlotMapper extends SimpleJsonResourceReloadListener {
 
     private static final Gson GSON = new Gson();
-    public static final SlotMapper INSTANCE = new SlotMapper();
 
     // 当前生效的映射（可被数据包重载覆盖）
     private final Map<String, String> slotMap = new LinkedHashMap<>();
@@ -89,6 +88,9 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
         groupMap.put("feet", "feet");
         DEFAULT_GROUP_FALLBACK = Collections.unmodifiableMap(groupMap);
     }
+
+    // INSTANCE 必须在 static 块之后声明，确保 DEFAULT_SLOT_MAP 已初始化
+    public static final SlotMapper INSTANCE = new SlotMapper();
 
     private SlotMapper() {
         super(GSON, "curio_trinkets_bridge/slot_mappings");
