@@ -1,6 +1,102 @@
+Curio Trinkets Bridge Private License / 饰品桥私有协议
+Version 1.0, 2026
+
+Copyright (c) 2026 宋明禹 (Song Mingyu). All Rights Reserved.
+
+=== 中文版 ===
+
+一、定义
+"本软件"指 Curio Trinkets Bridge 模组及其全部源代码、资源文件与构建产物。
+"作者"指版权持有者 宋明禹 (Song Mingyu)。
+"衍生作品"指任何基于本软件的全部或部分代码创建、修改或扩展的软件。
+
+二、授权范围
+在遵守本协议全部条款的前提下，作者授予您以下有限权利：
+1. 个人、非商业性地使用本软件。
+2. 阅读、学习本软件的源代码。
+3. 基于本软件代码创建衍生作品，但衍生作品必须遵守本协议全部条款。
+
+三、限制条款
+1. 【禁止未经批准的商业行为】未经作者书面授权，任何个人、企业或组织不得将本软件
+   或其衍生作品用于任何商业目的，包括但不限于出售、付费下载、内嵌广告盈利、
+   作为商业服务的一部分提供等。
+2. 【禁止擅自发布】未经作者书面授权，任何第三方企业、平台或个人不得以任何形式
+   自行发布、分发或转载本软件本体（包括编译后的二进制文件与源代码）。
+   本软件仅可通过作者指定的官方渠道获取。
+3. 【代码来源标注】任何使用了本软件全部或部分代码的模组或软件，必须在其显著位置
+   （包括但不限于 README、协议文件、模组描述页面）明确标注代码来源于本软件，
+   并附上本软件的GitHub官方链接。
+4. 【协议传染性】任何基于本软件创建的衍生作品，必须采用本协议的完整副本作为其
+   唯一许可协议。不得以任何其他协议替代或与其他协议并用。
+
+四、免责声明
+本软件按"原样"提供，不附带任何明示或暗示的保证，包括但不限于对适销性、
+特定用途适用性和非侵权性的保证。在任何情况下，作者不对因使用本软件而产生的
+任何直接、间接、偶然、特殊或后果性损害承担责任。
+
+五、协议终止
+若您违反本协议的任何条款，您在本协议下获得的全部权利将自动且立即终止。
+
+六、其他
+本协议的解释与适用受中华人民共和国法律管辖。
+作者保留随时修改本协议条款的权利。
+
+================================================================================
+
+=== English Version ===
+
+I. Definitions
+"The Software" refers to the Curio Trinkets Bridge mod and all of its source code,
+resource files, and build artifacts.
+"The Author" refers to the copyright holder, MangZai.
+"Derivative Works" refers to any software created, modified, or extended based on
+all or part of the code of The Software.
+
+II. Grant of Rights
+Subject to full compliance with all terms of this License, The Author grants you
+the following limited rights:
+1. To use The Software for personal, non-commercial purposes.
+2. To read and study the source code of The Software.
+3. To create Derivative Works based on The Software's code, provided that such
+   Derivative Works comply with all terms of this License.
+
+III. Restrictions
+1. [No Unauthorized Commercial Use] Without prior written authorization from
+   The Author, no individual, company, or organization may use The Software or
+   its Derivative Works for any commercial purpose, including but not limited to
+   selling, paid downloads, embedding advertisements for profit, or providing
+   as part of a commercial service.
+2. [No Unauthorized Distribution] Without prior written authorization from
+   The Author, no third-party company, platform, or individual may publish,
+   distribute, or redistribute The Software in any form (including compiled
+   binaries and source code). The Software may only be obtained through
+   official channels designated by The Author.
+3. [Source Attribution] Any mod or software that uses all or part of
+   The Software's code must clearly attribute the source in a prominent location
+   (including but not limited to README, license files, and mod description pages),
+   with a link to The Software's official page.
+4. [Viral Clause] Any Derivative Work based on The Software must adopt a complete
+   copy of this License as its sole license. No other license may be used as a
+   substitute or in combination with this License.
+
+IV. Disclaimer
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, OR
+CONSEQUENTIAL DAMAGES ARISING FROM THE USE OF THE SOFTWARE.
+
+V. Termination
+If you violate any term of this License, all rights granted to you under
+this License shall automatically and immediately terminate.
+
+VI. Miscellaneous
+This License shall be governed by and construed in accordance with the laws
+of the People's Republic of China.
+The Author reserves the right to modify the terms of this License at any time.
 MIT License
 
-Copyright (c) 2026 Jack “Pilot” Cooper
+Copyright (c) 2026 Song Mingyu (宋明禹)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
