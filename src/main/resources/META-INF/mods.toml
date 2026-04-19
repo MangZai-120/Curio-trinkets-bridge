@@ -6,6 +6,7 @@ license="MIT"
 modId="curio_trinkets_bridge"
 version="${file.jarVersion}"
 displayName="Curio Trinkets Bridge"
+logoFile="icon.png"
 authors="MangZai"
 description='''
 自动将 Trinkets (Fabric) 饰品桥接至 Curios (Forge)。
