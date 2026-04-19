@@ -67,6 +67,9 @@ public class CurioTrinketBridge {
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(() -> {
+            // 注册网络通道（用于把 SlotMapper 数据从服务端同步到客户端）
+            com.mangzai.curiotrinketbridge.network.BridgeNetwork.register();
+
             if (TrinketDetector.isTrinketsLoaded()) {
                 LOGGER.info("[CurioTrinketBridge] Trinkets API 已检测到，桥接已启用");
                 TrinketDetector.scanAndRegisterTrinkets();

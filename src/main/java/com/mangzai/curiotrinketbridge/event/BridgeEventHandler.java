@@ -3,12 +3,15 @@ package com.mangzai.curiotrinketbridge.event;
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
 import com.mangzai.curiotrinketbridge.bridge.TrinketSlotResolver;
+import com.mangzai.curiotrinketbridge.network.BridgeNetwork;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -40,6 +43,17 @@ public class BridgeEventHandler {
         if (TrinketDetector.isTrinketsLoaded()) {
             CurioTrinketBridge.LOGGER.info("[CurioTrinketBridge] 服务器启动后进行延迟扫描...");
             TrinketDetector.scanAndRegisterTrinkets();
+        }
+    }
+
+    /**
+     * 玩家登录时把当前 SlotMapper 同步给客户端，
+     * 保证客户端 tooltip 与 canEquip 校验结果与服务端一致。
+     */
+    @SubscribeEvent
+    public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer sp) {
+            BridgeNetwork.sendTo(sp);
         }
     }
 

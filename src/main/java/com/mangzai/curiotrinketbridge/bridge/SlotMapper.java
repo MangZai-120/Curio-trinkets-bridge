@@ -147,6 +147,26 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
 
         // 映射变更后清空物品槽位缓存
         TrinketSlotResolver.clearCache();
+
+        // 服务端：将最新映射广播给所有已登录玩家，保证客户端 tooltip 与 canEquip 一致
+        try {
+            com.mangzai.curiotrinketbridge.network.BridgeNetwork.broadcast();
+        } catch (Throwable t) {
+            // 在客户端单机首次构造时网络通道可能尚未初始化，忽略
+            CurioTrinketBridge.LOGGER.debug("[SlotMapper] 广播 SlotMapper 失败（可能尚未注册网络）: {}", t.getMessage());
+        }
+    }
+
+    /**
+     * 客户端：应用来自服务端的同步包。
+     * 替换本地映射为服务端权威数据，并刷新解析器缓存。
+     */
+    public void applyFromNetwork(Map<String, String> incomingMappings, Map<String, String> incomingGroupFallback) {
+        slotMap.clear();
+        groupFallback.clear();
+        if (incomingMappings != null) slotMap.putAll(incomingMappings);
+        if (incomingGroupFallback != null) groupFallback.putAll(incomingGroupFallback);
+        TrinketSlotResolver.clearCache();
     }
 
     /**
