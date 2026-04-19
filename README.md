@@ -1,4 +1,3 @@
 # Curio-trinkets-bridge
-看看能不能正常用吧，如果能正常用就转正了
-
-2026.3.18/21:25     byd有大bug，以后弄，先弄ssca去了
+这个模组是实验性质的，主要是为了让Curio和Trinkets这两个模组能够更好地兼容。它会自动的将Trinkets的物品转换为Curios的物品，并保留其原有槽位和效果（自制槽位没有效果）。
+是个小模组，为了解决信雅互联时同时使用trinkets模组和curios的两个饰品槽独立的问题，以后trinkets的饰品可以直接装备到curios下了。
