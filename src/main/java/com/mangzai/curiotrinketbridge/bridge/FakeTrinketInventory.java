@@ -1,94 +1,103 @@
 package com.mangzai.curiotrinketbridge.bridge;
 
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
+import net.minecraft.resources.ResourceLocation;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-
-/**
- * 为 SlotReference 创建一个不会抛 NPE 的伪 TrinketInventory 代理。
- *
- * <p>Trinkets 的 {@code SlotReference} 是 {@code record(TrinketInventory inventory, int index)}。
- * 许多 Trinket 实现在 tick/onEquip 等方法中会调用 {@code slotRef.inventory()} 获取槽位信息。
- * 由于我们禁用了 Trinkets 的库存系统，无法提供真实的 TrinketInventory。
- *
- * <p>此类通过 Java 动态代理创建一个返回安全默认值的伪 TrinketInventory：
- * <ul>
- *   <li>{@code getSlotType()} → 伪 SlotType 代理</li>
- *   <li>返回 int 的方法 → 0</li>
- *   <li>返回 boolean 的方法 → false</li>
- *   <li>其他方法 → null</li>
- * </ul>
- */
 public final class FakeTrinketInventory {
 
-    private static Object fakeInventory;
-    private static Object fakeSlotType;
-    private static boolean initialized = false;
-    private static boolean available = false;
+    private static final ConcurrentMap<String, Object> INVENTORY_CACHE = new ConcurrentHashMap<>();
+    private static volatile boolean initFailed = false;
+
+    private static Object unsafe;
+    private static Method allocateInstance;
+    private static Class<?> slotTypeClass;
+    private static Class<?> trinketInvClass;
+    private static Class<?> dropRuleClass;
+    private static Object dropRuleDefault;
 
     private FakeTrinketInventory() {}
 
-    /**
-     * 获取伪 TrinketInventory 实例。
-     * 如果 Trinkets 类不存在（比如未安装），返回 null。
-     */
-    public static Object get() {
-        if (!initialized) init();
-        return available ? fakeInventory : null;
+    public static Object getForSlot(String curiosSlotId) {
+        if (initFailed) return null;
+        String key = curiosSlotId == null ? "curio" : curiosSlotId;
+        return INVENTORY_CACHE.computeIfAbsent(key, FakeTrinketInventory::buildInventory);
     }
 
-    private static synchronized void init() {
-        if (initialized) return;
-        initialized = true;
+    public static Object get() { return getForSlot("charm"); }
 
+    private static synchronized void ensureUnsafe() {
+        if (unsafe != null || initFailed) return;
         try {
-            // TrinketInventory extends SimpleInventory, 不能直接 proxy（是具体类）
-            // 但 SlotReference.inventory() 的返回类型是 TrinketInventory
-            // 我们需要创建一个可以通过类型检查的对象
-            Class<?> trinketInvClass = Class.forName("dev.emi.trinkets.api.TrinketInventory");
-
-            // TrinketInventory 是一个具体类，不能用 Proxy
-            // 但我们可以尝试检查它是否有无参/单参构造器
-            // 如果没有，回退到返回 null
-            // 先尝试找 SlotType 相关的类，构建 SlotType 代理
-            Class<?> slotTypeClass = Class.forName("dev.emi.trinkets.api.SlotType");
-
-            // SlotType 是接口还是record/class？在 Trinkets 3.7.2 中它是一个 record
-            // record 无法被 proxy，但如果它有接口我们可以 proxy 接口
-            // Trinkets SlotType 在 3.7.2 中：public record SlotType(String group, String name, int order, int amount, ...)
-            // 这是一个 record，没有接口。我们无法 proxy 它。
-
-            // 最终策略：尝试通过反射构造 TrinketInventory
-            // TrinketInventory 构造器：TrinketInventory(SlotType slotType, int size, TrinketComponent component)
-            // 我们需要一个 SlotType 和 TrinketComponent
-            // 太深了——换个更简单的策略:
-
-            // 直接用 Unsafe 或 ObjenesisHelper 来构造空实例?
-            // 不，让我们用更简单的策略——包装 SlotReference 的访问
-
-            // 最终方案：由于 TrinketInventory 是具体类且构造复杂，
-            // 我们采用 InvocationHandler + 接口代理来包装整个 SlotReference 也不行（它是 record）
-            //
-            // 实际上最可行的方案是：
-            // 如果 Trinket 方法调用时 SlotReference.inventory() 返回 null 导致 NPE，
-            // 那么在 TrinketCurioAdapter 的try-catch 中已经能兜底了。
-            // 这里真正需要做的是让 SlotReference 中的 inventory 不为 null，
-            // 即使它的方法都返回空/默认值。
-
-            // 尝试用 sun.misc.Unsafe 分配一个不经过构造器的实例
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
-            java.lang.reflect.Field theUnsafe = unsafeClass.getDeclaredField("theUnsafe");
+            Field theUnsafe = unsafeClass.getDeclaredField("theUnsafe");
             theUnsafe.setAccessible(true);
-            Object unsafe = theUnsafe.get(null);
-            java.lang.reflect.Method allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
-            fakeInventory = allocateInstance.invoke(unsafe, trinketInvClass);
-            available = true;
-
-            CurioTrinketBridge.LOGGER.debug("[FakeTrinketInventory] 已通过 Unsafe 创建伪 TrinketInventory 实例");
+            unsafe = theUnsafe.get(null);
+            allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+            slotTypeClass = Class.forName("dev.emi.trinkets.api.SlotType");
+            trinketInvClass = Class.forName("dev.emi.trinkets.api.TrinketInventory");
+            try {
+                dropRuleClass = Class.forName("dev.emi.trinkets.api.TrinketEnums$DropRule");
+            } catch (ClassNotFoundException e) {
+                Class<?>[] inner = Class.forName("dev.emi.trinkets.api.TrinketEnums").getDeclaredClasses();
+                if (inner.length > 0) dropRuleClass = inner[0];
+            }
+            if (dropRuleClass != null) {
+                for (Object constant : dropRuleClass.getEnumConstants()) {
+                    if ("DEFAULT".equals(constant.toString())) { dropRuleDefault = constant; break; }
+                }
+            }
         } catch (Exception e) {
-            available = false;
-            CurioTrinketBridge.LOGGER.debug("[FakeTrinketInventory] 无法创建伪实例 ({}), " +
-                    "部分访问 inventory() 的 Trinket 将通过 try-catch 兜底", e.getMessage());
+            initFailed = true;
+            CurioTrinketBridge.LOGGER.warn("[FakeTrinketInventory] init reflection failed: {}", e.getMessage());
         }
+    }
+
+    private static Object buildInventory(String curiosSlotId) {
+        ensureUnsafe();
+        if (initFailed || trinketInvClass == null) return null;
+        try {
+            Object slotType = allocateInstance.invoke(unsafe, slotTypeClass);
+            setField(slotTypeClass, slotType, "group", "curios");
+            setField(slotTypeClass, slotType, "name", curiosSlotId);
+            setFieldInt(slotTypeClass, slotType, "order", 0);
+            setFieldInt(slotTypeClass, slotType, "amount", 1);
+            setField(slotTypeClass, slotType, "icon", new ResourceLocation("trinkets", "slot"));
+            setField(slotTypeClass, slotType, "quickMovePredicates", Collections.emptySet());
+            setField(slotTypeClass, slotType, "validatorPredicates", Collections.emptySet());
+            setField(slotTypeClass, slotType, "tooltipPredicates", Collections.emptySet());
+            if (dropRuleDefault != null) setField(slotTypeClass, slotType, "dropRule", dropRuleDefault);
+
+            Object inv = allocateInstance.invoke(unsafe, trinketInvClass);
+            setField(trinketInvClass, inv, "slotType", slotType);
+            setFieldInt(trinketInvClass, inv, "baseSize", 1);
+            try {
+                Class<?> nnl = Class.forName("net.minecraft.core.NonNullList");
+                Method withSize = nnl.getMethod("withSize", int.class, Object.class);
+                Object emptyStacks = withSize.invoke(null, 1, net.minecraft.world.item.ItemStack.EMPTY);
+                setField(trinketInvClass, inv, "stacks", emptyStacks);
+            } catch (Exception ignore) {}
+            return inv;
+        } catch (Throwable t) {
+            CurioTrinketBridge.LOGGER.warn("[FakeTrinketInventory] build inventory for slot={} failed: {}", curiosSlotId, t.toString());
+            return null;
+        }
+    }
+
+    private static void setField(Class<?> cls, Object instance, String fieldName, Object value) {
+        try { Field f = cls.getDeclaredField(fieldName); f.setAccessible(true); f.set(instance, value); }
+        catch (NoSuchFieldException ignore) {}
+        catch (Exception e) { CurioTrinketBridge.LOGGER.debug("set field {}.{} failed: {}", cls.getSimpleName(), fieldName, e.getMessage()); }
+    }
+
+    private static void setFieldInt(Class<?> cls, Object instance, String fieldName, int value) {
+        try { Field f = cls.getDeclaredField(fieldName); f.setAccessible(true); f.setInt(instance, value); }
+        catch (NoSuchFieldException ignore) {}
+        catch (Exception e) { CurioTrinketBridge.LOGGER.debug("set int field {}.{} failed: {}", cls.getSimpleName(), fieldName, e.getMessage()); }
     }
 }

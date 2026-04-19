@@ -6,9 +6,11 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import top.theillusivec4.curios.api.CuriosApi;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 通过反射检测 Trinkets (Fabric) 物品
@@ -22,6 +24,20 @@ public final class TrinketDetector {
     private static Object defaultTrinketHandler;   // 未注册物品的默认空处理器
     private static boolean checked = false;
     private static boolean available = false;
+
+    // ===== Trinket 接口反射方法的共享缓存（所有 adapter 实例共用，避免重复反射）=====
+    private static Method tickMethod;
+    private static Method onEquipMethod;
+    private static Method onUnequipMethod;
+    private static Method canEquipMethod;
+    private static Method canUnequipMethod;
+    private static Method getModifiersMethod;
+    private static Method getDropRuleMethod;
+    private static Constructor<?> slotReferenceConstructor;
+    private static Class<?> trinketRendererClass;        // dev.emi.trinkets.api.TrinketRenderer
+    private static Method getRendererMethod;             // TrinketRendererRegistry.getRenderer(Item)
+    private static Method rendererRenderMethod;          // TrinketRenderer.render(...)
+    private static volatile boolean methodsCached = false;
 
     private TrinketDetector() {}
 
@@ -72,6 +88,91 @@ public final class TrinketDetector {
     }
 
     /**
+     * 一次性缓存所有 Trinket 接口反射方法（共享给所有 adapter 实例使用）。
+     * 线程安全：使用 double-checked locking。
+     */
+    public static void cacheTrinketMethods() {
+        if (methodsCached) return;
+        synchronized (TrinketDetector.class) {
+            if (methodsCached) return;
+            try {
+                Class<?> trinketClass = getTrinketInterface();
+                if (trinketClass == null) {
+                    methodsCached = true; // 标记完成以避免反复尝试
+                    return;
+                }
+                for (Method m : trinketClass.getMethods()) {
+                    switch (m.getName()) {
+                        case "tick" -> { if (m.getParameterCount() == 3) tickMethod = m; }
+                        case "onEquip" -> { if (m.getParameterCount() == 3) onEquipMethod = m; }
+                        case "onUnequip" -> { if (m.getParameterCount() == 3) onUnequipMethod = m; }
+                        case "canEquip" -> { if (m.getParameterCount() == 3) canEquipMethod = m; }
+                        case "canUnequip" -> { if (m.getParameterCount() == 3) canUnequipMethod = m; }
+                        case "getModifiers" -> {
+                            if (m.getParameterCount() == 3 || m.getParameterCount() == 4) getModifiersMethod = m;
+                        }
+                        case "getDropRule" -> { if (m.getParameterCount() >= 2) getDropRuleMethod = m; }
+                    }
+                }
+                // 缓存 SlotReference 构造函数（record 单一构造器）
+                try {
+                    Class<?> slotRefClass = Class.forName("dev.emi.trinkets.api.SlotReference");
+                    slotReferenceConstructor = slotRefClass.getDeclaredConstructors()[0];
+                } catch (Exception e) {
+                    CurioTrinketBridge.LOGGER.debug("缓存 SlotReference 构造器失败: {}", e.getMessage());
+                }
+                // 缓存 TrinketRenderer 与渲染相关反射（用于客户端渲染桥接，找不到不影响主流程）
+                try {
+                    trinketRendererClass = Class.forName("dev.emi.trinkets.api.TrinketRenderer");
+                    Class<?> rendererRegistry = Class.forName("dev.emi.trinkets.api.TrinketRendererRegistry");
+                    getRendererMethod = rendererRegistry.getMethod("getRenderer", Item.class);
+                    for (Method m : trinketRendererClass.getMethods()) {
+                        if (m.getName().equals("render") && m.getParameterCount() >= 12) {
+                            rendererRenderMethod = m;
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    CurioTrinketBridge.LOGGER.debug("缓存 TrinketRenderer 反射失败（渲染桥接将不可用）: {}", e.getMessage());
+                }
+                CurioTrinketBridge.LOGGER.debug("Trinket 反射方法已缓存");
+            } catch (Exception e) {
+                CurioTrinketBridge.LOGGER.warn("缓存 Trinket 反射方法失败: {}", e.getMessage());
+            } finally {
+                methodsCached = true;
+            }
+        }
+    }
+
+    public static Method getTickMethod() { cacheTrinketMethods(); return tickMethod; }
+    public static Method getOnEquipMethod() { cacheTrinketMethods(); return onEquipMethod; }
+    public static Method getOnUnequipMethod() { cacheTrinketMethods(); return onUnequipMethod; }
+    public static Method getCanEquipMethod() { cacheTrinketMethods(); return canEquipMethod; }
+    public static Method getCanUnequipMethod() { cacheTrinketMethods(); return canUnequipMethod; }
+    public static Method getModifiersMethod() { cacheTrinketMethods(); return getModifiersMethod; }
+    public static Method getDropRuleMethod() { cacheTrinketMethods(); return getDropRuleMethod; }
+    public static Constructor<?> getSlotReferenceConstructor() { cacheTrinketMethods(); return slotReferenceConstructor; }
+
+    /**
+     * 通过反射获取物品已注册的 TrinketRenderer（如果有）。
+     * 仅在客户端调用时有效；找不到 TrinketRendererRegistry 类时返回 null。
+     */
+    public static Object getTrinketRenderer(Item item) {
+        cacheTrinketMethods();
+        if (getRendererMethod == null) return null;
+        try {
+            Object opt = getRendererMethod.invoke(null, item);
+            if (opt instanceof Optional<?> o) return o.orElse(null);
+            return opt;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 调用已缓存的 TrinketRenderer.render() 方法（仅在客户端使用） */
+    public static Method getRendererRenderMethod() { cacheTrinketMethods(); return rendererRenderMethod; }
+
+    /**
      * 获取物品注册的 Trinket 行为处理器。
      * <p>
      * 优先返回通过 TrinketsApi.registerTrinket(item, handler) 注册的处理器。
@@ -99,6 +200,8 @@ public final class TrinketDetector {
      */
     public static void scanAndRegisterTrinkets() {
         if (!isTrinketsLoaded()) return;
+        // 一次性预热反射方法缓存，避免每个 adapter 实例首次调用时延迟
+        cacheTrinketMethods();
 
         List<Item> registeredTrinkets = new ArrayList<>();
 

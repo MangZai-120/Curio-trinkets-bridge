@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "size": 1,
+  "operation": "SET",
+  "order": 30,
+  "validators": ["curios:tag", "curio_trinkets_bridge:trinket_tag"]
+}

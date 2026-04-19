@@ -2,7 +2,6 @@ package com.mangzai.curiotrinketbridge.bridge;
 
 import com.google.common.collect.Multimap;
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.item.Item;
@@ -12,181 +11,142 @@ import top.theillusivec4.curios.api.type.capability.ICurio;
 import top.theillusivec4.curios.api.type.capability.ICurioItem;
 
 import javax.annotation.Nonnull;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 将 Trinket (Fabric) 物品适配为 Curios 的 ICurioItem
+ * 灏?Trinket (Fabric) 鐗╁搧閫傞厤涓?Curios 鐨?ICurioItem銆?
  *
- * 通过反射调用 Trinket 接口的方法，实现生命周期桥接：
- * - tick → curioTick
- * - onEquip → onEquip
- * - onUnequip → onUnequip
- * - canEquip → canEquip
- * - canUnequip → canUnequip
- * - getModifiers → getAttributeModifiers
- * - getDropRule → getDropRule
+ * <p>鏈€傞厤鍣ㄩ€氳繃 {@link TrinketDetector} 鎻愪緵鐨勫叡浜弽灏勭紦瀛樿皟鐢?Trinket 鎺ュ彛鏂规硶锛?
+ * 瀹炵幇 Trinket 涓?Curios 涔嬮棿鐨勭敓鍛藉懆鏈熸ˉ鎺ワ細
+ * <ul>
+ *   <li>tick 鈫?curioTick</li>
+ *   <li>onEquip 鈫?onEquip</li>
+ *   <li>onUnequip 鈫?onUnequip</li>
+ *   <li>canEquip 鈫?canEquip</li>
+ *   <li>canUnequip 鈫?canUnequip</li>
+ *   <li>getModifiers 鈫?getAttributeModifiers</li>
+ *   <li>getDropRule 鈫?getDropRule</li>
+ * </ul>
+ *
+ * <p>鎵€鏈夊弽灏?Method 瀵硅薄閮界紦瀛樺湪 TrinketDetector 闈欐€佸瓧娈典腑锛屾墍鏈?adapter 瀹炰緥鍏辩敤锛?
+ * 閬垮厤姣忎釜 Trinket 鐗╁搧鍒涘缓涓€浠界嫭绔嬬紦瀛樺鑷村唴瀛樻氮璐广€?
  */
 public class TrinketCurioAdapter implements ICurioItem {
 
     private final Item trinketItem;
     private final Object trinketHandler; // 实际的 Trinket 行为处理器（可能是 item 本身或独立对象）
 
-    // 缓存反射方法
-    private Method tickMethod;
-    private Method onEquipMethod;
-    private Method onUnequipMethod;
-    private Method canEquipMethod;
-    private Method canUnequipMethod;
-    private Method getModifiersMethod;
-    private Method getDropRuleMethod;
-    private boolean methodsCached = false;
+    // 记录已经发出 WARN 的 (item|method) 组合，避免日志刷屏；首次失败给出完整堆栈，后续仅 debug
+    private static final Set<String> WARNED = ConcurrentHashMap.newKeySet();
 
     public TrinketCurioAdapter(Item trinketItem, Object trinketHandler) {
         this.trinketItem = trinketItem;
         this.trinketHandler = trinketHandler;
     }
 
-    /**
-     * 延迟缓存反射方法，避免初始化时出错
-     */
-    private void ensureMethodsCached() {
-        if (methodsCached) return;
-        methodsCached = true;
-
-        try {
-            Class<?> trinketClass = TrinketDetector.getTrinketInterface();
-            if (trinketClass == null) return;
-
-            // Trinket.tick(ItemStack stack, SlotReference slot, LivingEntity entity)
-            // 注意: SlotReference 可能不可用，我们需要做兼容处理
-            Class<?> itemStackClass = ItemStack.class;
-            Class<?> livingEntityClass = LivingEntity.class;
-
-            // 尝试获取方法（参数类型可能因 Sinytra 重映射而不同）
-            for (Method m : trinketClass.getMethods()) {
-                switch (m.getName()) {
-                    case "tick" -> {
-                        if (m.getParameterCount() == 3) tickMethod = m;
-                    }
-                    case "onEquip" -> {
-                        if (m.getParameterCount() == 3) onEquipMethod = m;
-                    }
-                    case "onUnequip" -> {
-                        if (m.getParameterCount() == 3) onUnequipMethod = m;
-                    }
-                    case "canEquip" -> {
-                        if (m.getParameterCount() == 3) canEquipMethod = m;
-                    }
-                    case "canUnequip" -> {
-                        if (m.getParameterCount() == 3) canUnequipMethod = m;
-                    }
-                    case "getModifiers" -> {
-                        if (m.getParameterCount() == 3 || m.getParameterCount() == 4) {
-                            getModifiersMethod = m;
-                        }
-                    }
-                    case "getDropRule" -> {
-                        if (m.getParameterCount() >= 2) getDropRuleMethod = m;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.warn("缓存 Trinket 反射方法失败: {}", e.getMessage());
+    private void logFailure(String method, Throwable t) {
+        String key = trinketItem.getDescriptionId() + "|" + method;
+        if (WARNED.add(key)) {
+            CurioTrinketBridge.LOGGER.warn("[TrinketCurioAdapter] {} 调用 Trinket.{} 失败（首次）: {}",
+                    trinketItem.getDescriptionId(), method, t.toString(), t);
+        } else {
+            CurioTrinketBridge.LOGGER.debug("[TrinketCurioAdapter] {} 调用 Trinket.{} 失败: {}",
+                    trinketItem.getDescriptionId(), method, t.toString());
         }
     }
 
     /**
-     * 创建一个伪 SlotReference 对象（通过反射），用于传递给 Trinket 方法。
-     * SlotReference 是一个 record(TrinketInventory inventory, int index)。
-     * 使用 {@link FakeTrinketInventory} 提供的伪实例代替 null，
-     * 减少 Trinket 内部访问 inventory() 时的 NPE 风险。
+     * 鍒涘缓涓€涓?SlotReference 瀵硅薄锛堥€氳繃鍏变韩鏋勯€犲櫒缂撳瓨锛夈€?
+     * SlotReference 鏄竴涓?record(TrinketInventory inventory, int index)銆?
+     * 浣跨敤 {@link FakeTrinketInventory} 鎻愪緵鐨勪吉瀹炰緥浠ｆ浛 null锛?
+     * 鍑忓皯 Trinket 鍐呴儴璁块棶 inventory() 鏃剁殑 NPE 椋庨櫓銆?
      */
-    private Object createSlotReference(SlotContext slotContext) {
+    private static Object createSlotReference(SlotContext slotContext) {
+        Constructor<?> ctor = TrinketDetector.getSlotReferenceConstructor();
+        if (ctor == null) return null;
         try {
-            Class<?> slotRefClass = Class.forName("dev.emi.trinkets.api.SlotReference");
-            Object fakeInv = FakeTrinketInventory.get(); // 可能为 null（如果 Unsafe 不可用）
-            return slotRefClass.getDeclaredConstructors()[0].newInstance(fakeInv, slotContext.index());
+            // 关键修复：按 Curios 槽位 ID 提供带 SlotType 的伪库存
+            // 避免 Trinket 实现调用 ref.inventory().getSlotType().getGroup()/getName() 时 NPE
+            Object fakeInv = FakeTrinketInventory.getForSlot(slotContext.identifier());
+            return ctor.newInstance(fakeInv, slotContext.index());
         } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.debug("创建 SlotReference 失败，将传递 null: {}", e.getMessage());
+            CurioTrinketBridge.LOGGER.debug("创建 SlotReference 失败: {}", e.getMessage());
             return null;
         }
     }
 
     @Override
     public void curioTick(SlotContext slotContext, ItemStack stack) {
-        ensureMethodsCached();
-        if (tickMethod == null) return;
-
+        Method m = TrinketDetector.getTickMethod();
+        if (m == null) return;
         try {
             Object slotRef = createSlotReference(slotContext);
-            if (slotRef == null) return; // 无法创建 SlotReference，跳过以避免 NPE
-            tickMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
+            if (slotRef == null) return;
+            m.invoke(trinketHandler, stack, slotRef, slotContext.entity());
         } catch (Exception e) {
-            // Trinket 内部访问 SlotReference.inventory() 导致 NPE 等情况，仅记录一次
-            CurioTrinketBridge.LOGGER.debug("Trinket tick 调用失败: {}", e.getMessage());
+            logFailure("tick", e);
         }
     }
 
     @Override
     public void onEquip(SlotContext slotContext, ItemStack prevStack, ItemStack stack) {
-        ensureMethodsCached();
-        if (onEquipMethod == null) return;
-
+        Method m = TrinketDetector.getOnEquipMethod();
+        if (m == null) return;
         try {
             Object slotRef = createSlotReference(slotContext);
             if (slotRef == null) return;
-            onEquipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
+            m.invoke(trinketHandler, stack, slotRef, slotContext.entity());
         } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.debug("Trinket onEquip 调用失败: {}", e.getMessage());
+            logFailure("onEquip", e);
         }
     }
 
     @Override
     public void onUnequip(SlotContext slotContext, ItemStack newStack, ItemStack stack) {
-        ensureMethodsCached();
-        if (onUnequipMethod == null) return;
-
+        Method m = TrinketDetector.getOnUnequipMethod();
+        if (m == null) return;
         try {
             Object slotRef = createSlotReference(slotContext);
             if (slotRef == null) return;
-            onUnequipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
+            m.invoke(trinketHandler, stack, slotRef, slotContext.entity());
         } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.debug("Trinket onUnequip 调用失败: {}", e.getMessage());
+            logFailure("onUnequip", e);
         }
     }
 
     @Override
     public boolean canEquip(SlotContext slotContext, ItemStack stack) {
-        // 首先通过标签映射检查此物品是否适合当前 Curios 槽位
+        // 棣栧厛閫氳繃鏍囩鏄犲皠妫€鏌ユ鐗╁搧鏄惁閫傚悎褰撳墠 Curios 妲戒綅
         if (!TrinketSlotResolver.canEquipInSlot(trinketItem, slotContext.identifier())) {
             return false;
         }
 
-        // 然后委托给 Trinket 自身的 canEquip 逻辑
-        ensureMethodsCached();
-        if (canEquipMethod == null) return true;
+        Method m = TrinketDetector.getCanEquipMethod();
+        if (m == null) return true;
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            if (slotRef == null) return true; // 无法构造 SlotReference，允许装备（已通过标签校验）
-            Object result = canEquipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
-            return result instanceof Boolean b ? b : true;
+            if (slotRef == null) return true; // 鏃犳硶鏋勯€?SlotReference锛屽凡閫氳繃鏍囩鏍￠獙
+            Object result = m.invoke(trinketHandler, stack, slotRef, slotContext.entity());
+            return !(result instanceof Boolean b) || b;
         } catch (Exception e) {
-            return true; // 反射失败时允许装备（已通过标签校验）
+            return true;
         }
     }
 
     @Override
     public boolean canUnequip(SlotContext slotContext, ItemStack stack) {
-        ensureMethodsCached();
-        if (canUnequipMethod == null) return true;
-
+        Method m = TrinketDetector.getCanUnequipMethod();
+        if (m == null) return true;
         try {
             Object slotRef = createSlotReference(slotContext);
             if (slotRef == null) return true;
-            Object result = canUnequipMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity());
-            return result instanceof Boolean b ? b : true;
+            Object result = m.invoke(trinketHandler, stack, slotRef, slotContext.entity());
+            return !(result instanceof Boolean b) || b;
         } catch (Exception e) {
             return true;
         }
@@ -198,27 +158,25 @@ public class TrinketCurioAdapter implements ICurioItem {
     public Multimap<Attribute, AttributeModifier> getAttributeModifiers(SlotContext slotContext,
                                                                          UUID uuid,
                                                                          ItemStack stack) {
-        ensureMethodsCached();
-        if (getModifiersMethod == null) {
+        Method m = TrinketDetector.getModifiersMethod();
+        if (m == null) {
             return ICurioItem.super.getAttributeModifiers(slotContext, uuid, stack);
         }
-
         try {
             Object slotRef = createSlotReference(slotContext);
             if (slotRef == null) return ICurioItem.super.getAttributeModifiers(slotContext, uuid, stack);
             Object result;
-            if (getModifiersMethod.getParameterCount() == 4) {
-                result = getModifiersMethod.invoke(trinketHandler, stack, slotRef, slotContext.entity(), uuid);
+            if (m.getParameterCount() == 4) {
+                result = m.invoke(trinketHandler, stack, slotRef, slotContext.entity(), uuid);
             } else {
-                result = getModifiersMethod.invoke(trinketHandler, stack, slotRef, uuid);
+                result = m.invoke(trinketHandler, stack, slotRef, uuid);
             }
             if (result instanceof Multimap<?, ?>) {
                 return (Multimap<Attribute, AttributeModifier>) result;
             }
         } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.debug("Trinket getModifiers 调用失败: {}", e.getMessage());
+            logFailure("getModifiers", e);
         }
-
         return ICurioItem.super.getAttributeModifiers(slotContext, uuid, stack);
     }
 
@@ -226,17 +184,14 @@ public class TrinketCurioAdapter implements ICurioItem {
     @Override
     public ICurio.DropRule getDropRule(SlotContext slotContext, net.minecraft.world.damagesource.DamageSource source,
                                        int lootingLevel, boolean recentlyHit, ItemStack stack) {
-        ensureMethodsCached();
-        if (getDropRuleMethod == null) return ICurio.DropRule.DEFAULT;
-
+        Method m = TrinketDetector.getDropRuleMethod();
+        if (m == null) return ICurio.DropRule.DEFAULT;
         try {
             Object slotRef = createSlotReference(slotContext);
             if (slotRef == null) return ICurio.DropRule.DEFAULT;
-            Object result = getDropRuleMethod.invoke(trinketHandler, ICurio.DropRule.DEFAULT,
-                    stack, slotRef, slotContext.entity());
+            Object result = m.invoke(trinketHandler, ICurio.DropRule.DEFAULT, stack, slotRef, slotContext.entity());
             if (result != null) {
-                String name = result.toString();
-                return switch (name) {
+                return switch (result.toString()) {
                     case "KEEP" -> ICurio.DropRule.ALWAYS_KEEP;
                     case "DROP" -> ICurio.DropRule.ALWAYS_DROP;
                     case "DESTROY" -> ICurio.DropRule.DESTROY;
@@ -244,7 +199,7 @@ public class TrinketCurioAdapter implements ICurioItem {
                 };
             }
         } catch (Exception e) {
-            CurioTrinketBridge.LOGGER.debug("Trinket getDropRule 调用失败: {}", e.getMessage());
+            logFailure("getDropRule", e);
         }
         return ICurio.DropRule.DEFAULT;
     }

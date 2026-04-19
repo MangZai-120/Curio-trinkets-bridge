@@ -22,11 +22,27 @@ public final class TrinketSlotResolver {
     private static final Map<Item, Set<String>> CACHE = new IdentityHashMap<>();
 
     // 动态生成的 tag → curios slot 映射列表
-    private static List<TagMapping> tagMappings = List.of();
+    private static volatile List<TagMapping> tagMappings = null;
+    // 标记是否已经通过 SlotMapper.apply() 进行过完整的初始化
+    private static volatile boolean initialized = false;
 
     private record TagMapping(TagKey<Item> tag, String curiosSlot, String trinketSlot) {}
 
     private TrinketSlotResolver() {}
+
+    /**
+     * 确保 tagMappings 已初始化。
+     * 在 SlotMapper 数据包加载前（如 FMLCommonSetupEvent 期间），使用默认映射进行初始化。
+     */
+    private static void ensureInitialized() {
+        if (tagMappings == null) {
+            synchronized (TrinketSlotResolver.class) {
+                if (tagMappings == null) {
+                    rebuildTagMappings();
+                }
+            }
+        }
+    }
 
     /**
      * 根据当前 SlotMapper 中的映射重建 tag 映射列表
@@ -52,6 +68,7 @@ public final class TrinketSlotResolver {
      * @return 允许装备的 Curios 槽位标识符集合；无标签匹配时返回 {"charm"}
      */
     public static Set<String> getValidCuriosSlots(Item item) {
+        ensureInitialized();
         return CACHE.computeIfAbsent(item, i -> {
             Set<String> slots = new LinkedHashSet<>();
             try {
@@ -88,5 +105,6 @@ public final class TrinketSlotResolver {
     public static void clearCache() {
         CACHE.clear();
         rebuildTagMappings();
+        initialized = true;
     }
 }
