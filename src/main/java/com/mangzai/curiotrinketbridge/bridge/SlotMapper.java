@@ -46,26 +46,34 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
     private final Map<String, String> groupFallback = new LinkedHashMap<>();
 
     // 内置默认映射（数据包未加载前使用）
-    private static final Map<String, String> DEFAULT_SLOT_MAP;
-    private static final Map<String, String> DEFAULT_GROUP_FALLBACK;
+    public static final Map<String, String> DEFAULT_SLOT_MAP;
+    public static final Map<String, String> DEFAULT_GROUP_FALLBACK;
+    /**
+     * 仅按 slot 名（去掉 group 前缀）兜底匹配到 Curios 内置槽位。
+     * 用于忽略 mod 自创的不同 group（如 cape/cape、back/cape）也能正确归位。
+     * 仅作为 trinketSlotId 未命中 DEFAULT_SLOT_MAP 时的兜底。
+     */
+    public static final Map<String, String> SLOT_NAME_FALLBACK;
 
     static {
+        // 全部映射到 Curios 内置槽位：head, necklace, charm, body, back, belt, bracelet, hands, ring, curio
+        // 不依赖任何 Curios 扩展模组
         Map<String, String> map = new LinkedHashMap<>();
         // 头部
         map.put("head/hat", "head");
-        map.put("head/face", "face");
-        map.put("head/mask", "face");
+        map.put("head/face", "head");      // Curios 无 face → 近似归到 head
+        map.put("head/mask", "head");      // 同上
         map.put("head/crown", "head");
         // 胸部
         map.put("chest/back", "back");
-        map.put("chest/cape", "cape");
+        map.put("chest/cape", "back");     // Curios 无 cape → 近似归到 back
         map.put("chest/necklace", "necklace");
         map.put("chest/pendant", "necklace");
         map.put("chest/amulet", "necklace");
         // 手部
         map.put("hand/ring", "ring");
         map.put("hand/glove", "hands");
-        map.put("hand/bracelet", "hands");
+        map.put("hand/bracelet", "bracelet");
         // 副手
         map.put("offhand/ring", "ring");
         map.put("offhand/glove", "hands");
@@ -73,10 +81,10 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
         // 腿部
         map.put("legs/belt", "belt");
         map.put("legs/charm", "charm");
-        // 脚部
-        map.put("feet/aglet", "feet");
-        map.put("feet/shoes", "feet");
-        map.put("feet/boots", "feet");
+        // 脚部（Curios 无 feet 槽 → 全部归到通用 charm）
+        map.put("feet/aglet", "charm");
+        map.put("feet/shoes", "charm");
+        map.put("feet/boots", "charm");
         DEFAULT_SLOT_MAP = Collections.unmodifiableMap(map);
 
         Map<String, String> groupMap = new LinkedHashMap<>();
@@ -85,8 +93,44 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
         groupMap.put("hand", "ring");
         groupMap.put("offhand", "ring");
         groupMap.put("legs", "belt");
-        groupMap.put("feet", "feet");
+        groupMap.put("feet", "charm");
         DEFAULT_GROUP_FALLBACK = Collections.unmodifiableMap(groupMap);
+
+        // slot 名兜底（与 group 无关）
+        Map<String, String> nameMap = new LinkedHashMap<>();
+        // 头部
+        nameMap.put("hat", "head");
+        nameMap.put("helmet", "head");
+        nameMap.put("crown", "head");
+        nameMap.put("face", "head");
+        nameMap.put("mask", "head");
+        // 背部
+        nameMap.put("back", "back");
+        nameMap.put("cape", "back");
+        nameMap.put("cloak", "back");
+        // 项链
+        nameMap.put("necklace", "necklace");
+        nameMap.put("pendant", "necklace");
+        nameMap.put("amulet", "necklace");
+        // 戒指
+        nameMap.put("ring", "ring");
+        // 手套
+        nameMap.put("glove", "hands");
+        nameMap.put("gloves", "hands");
+        nameMap.put("hand", "hands");
+        nameMap.put("hands", "hands");
+        nameMap.put("shield", "hands");
+        // 手镯
+        nameMap.put("bracelet", "bracelet");
+        // 腰带
+        nameMap.put("belt", "belt");
+        // 通用 / 脚部（Curios 无 feet → 全归 charm）
+        nameMap.put("charm", "charm");
+        nameMap.put("aglet", "charm");
+        nameMap.put("shoes", "charm");
+        nameMap.put("boots", "charm");
+        nameMap.put("feet", "charm");
+        SLOT_NAME_FALLBACK = Collections.unmodifiableMap(nameMap);
     }
 
     // INSTANCE 必须在 static 块之后声明，确保 DEFAULT_SLOT_MAP 已初始化
@@ -97,6 +141,28 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
         // 初始化时使用默认映射
         slotMap.putAll(DEFAULT_SLOT_MAP);
         groupFallback.putAll(DEFAULT_GROUP_FALLBACK);
+        mergeDiscoveredSlots();
+    }
+
+    /**
+     * 把扫描到的 Trinkets 自定义槽位合并进映射表。
+     * 仅添加在默认映射里没有的条目，避免覆盖既有映射。
+     */
+    private void mergeDiscoveredSlots() {
+        try {
+            for (TrinketSlotDiscovery.DiscoveredSlot s : TrinketSlotDiscovery.getOrScan().values()) {
+                // 优先按 slot 名兜底，命中则映射到 Curios 内置槽位（原生近似映射）；
+                // 未命中的纯自定义槽映射到 trinkets_<slot>（由 BridgeVirtualPack 生成同名 Curios 槽）。
+                String fallback = SLOT_NAME_FALLBACK.get(s.slot());
+                if (fallback != null) {
+                    slotMap.putIfAbsent(s.trinketSlotId(), fallback);
+                } else {
+                    slotMap.putIfAbsent(s.trinketSlotId(), s.curiosSlotId());
+                }
+            }
+        } catch (Throwable t) {
+            CurioTrinketBridge.LOGGER.debug("[SlotMapper] 合并发现槽位失败: {}", t.toString());
+        }
     }
 
     @Override
@@ -106,6 +172,8 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
         groupFallback.clear();
         slotMap.putAll(DEFAULT_SLOT_MAP);
         groupFallback.putAll(DEFAULT_GROUP_FALLBACK);
+        // 合并扫描到的 Trinkets 自定义槽位
+        mergeDiscoveredSlots();
 
         int loaded = 0;
         for (Map.Entry<ResourceLocation, JsonElement> entry : entries.entrySet()) {

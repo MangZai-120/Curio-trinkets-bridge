@@ -84,7 +84,7 @@ public final class TrinketSlotResolver {
             }
 
             if (slots.isEmpty()) {
-                // 无标签匹配，放入通用 charm 槽位
+                // 无标签匹配，退回通用 charm 槽位（保证 trinkets 物品总能被 Curios 收底装备）
                 slots.add("charm");
                 CurioTrinketBridge.LOGGER.debug("物品 {} 无 Trinkets 标签匹配，默认使用 charm 槽位", i);
             }

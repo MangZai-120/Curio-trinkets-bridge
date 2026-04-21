@@ -32,6 +32,9 @@ public class CurioTrinketBridge {
     @SuppressWarnings("removal")
     public CurioTrinketBridge() {
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::onCommonSetup);
+        // 注册自动槽位生成数据包提供者（必须挂在 mod 事件总线上，AddPackFindersEvent 在那里触发）
+        FMLJavaModLoadingContext.get().getModEventBus().register(
+                com.mangzai.curiotrinketbridge.pack.BridgePackProvider.class);
         MinecraftForge.EVENT_BUS.register(BridgeEventHandler.class);
         MinecraftForge.EVENT_BUS.register(TooltipEventHandler.class);
         // 注册数据包重载监听器，使槽位映射可通过 /reload 热更新

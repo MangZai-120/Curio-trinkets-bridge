@@ -3,6 +3,7 @@ package com.mangzai.curiotrinketbridge.event;
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
 import com.mangzai.curiotrinketbridge.bridge.TrinketSlotResolver;
+import com.mangzai.curiotrinketbridge.bridge.TrinketsItemMigrator;
 import com.mangzai.curiotrinketbridge.network.BridgeNetwork;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -11,6 +12,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -31,6 +33,8 @@ import java.util.Set;
 public class BridgeEventHandler {
 
     private static volatile boolean scannedLate = false;
+    /** 服务端 tick 计数器，每 20 tick 调用一次迁移器。 */
+    private static int migrationTickCounter = 0;
 
     /**
      * 服务器启动后再次扫描，捕获在 FMLCommonSetupEvent 之后才注册的 Trinket 物品
@@ -87,6 +91,11 @@ public class BridgeEventHandler {
                 IDynamicStackHandler stacks = entry.getValue().getStacks();
                 for (int i = 0; i < stacks.getSlots(); i++) {
                     if (!stacks.getStackInSlot(i).isEmpty()) continue;
+                    // 关键修复：装入前调用 ICurio.canEquip / canEquipFromUse 校验，
+                    // 触发 trinket 物品自身条件（如 sp 雪狐形态校验）。
+                    // 不通过则跳过该槽，避免右键无视条件强制装备的 bug。
+                    if (player instanceof ServerPlayer sp
+                            && !TrinketsItemMigrator.canEquipTo(sp, stack, slotId, i)) continue;
 
                     stacks.setStackInSlot(i, stack.split(1));
                     equipped[0] = true;
@@ -100,6 +109,25 @@ public class BridgeEventHandler {
                     SoundEvents.ARMOR_EQUIP_GENERIC, SoundSource.PLAYERS, 1.0f, 1.0f);
             event.setCanceled(true);
             event.setCancellationResult(InteractionResult.sidedSuccess(false));
+        }
+    }
+
+    /**
+     * 服务端每 20 tick 扫描一次所有在线玩家，将原生映射槽位中的 trinket 物品迁移到 Curios。
+     * 只处理 END 阶段避免一个 tick 内两次触发。
+     */
+    @SubscribeEvent
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        if (++migrationTickCounter < 20) return;
+        migrationTickCounter = 0;
+        if (!TrinketDetector.isTrinketsLoaded()) return;
+        try {
+            for (ServerPlayer sp : event.getServer().getPlayerList().getPlayers()) {
+                TrinketsItemMigrator.migrate(sp);
+            }
+        } catch (Throwable t) {
+            CurioTrinketBridge.LOGGER.debug("[BridgeEventHandler] 迁移扫描异常：{}", t.toString());
         }
     }
 }

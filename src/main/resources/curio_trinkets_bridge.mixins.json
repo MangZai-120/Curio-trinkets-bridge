@@ -4,11 +4,12 @@
   "compatibilityLevel": "JAVA_17",
   "minVersion": "0.8.5",
   "mixins": [
-    "TrinketsBridgeMixins$TrinketsApiMixin",
     "TrinketsBridgeMixins$TrinketInventoryMixin"
-  ],
+    ],
   "client": [
-    "TrinketsBridgeMixins$TrinketScreenManagerMixin"
+    "TrinketsBridgeMixins$TrinketScreenManagerMixin",
+    "TrinketsBridgeMixins$SurvivalTrinketSlotMixin",
+    "TrinketsBridgeMixins$AbstractContainerScreenSlotMixin"
   ],
   "injectors": {
     "maxShiftBy": 5
