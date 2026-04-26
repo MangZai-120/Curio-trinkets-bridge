@@ -1,5 +1,8 @@
 package com.mangzai.curiotrinketbridge.mixin;
 
+import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
+import com.mangzai.curiotrinketbridge.bridge.FakeTrinketInventory;
+import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
 import com.mangzai.curiotrinketbridge.bridge.TrinketsApiAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -7,8 +10,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
+import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 
 /**
  * Curio Trinkets Bridge 的所有 Mixin 集合。
@@ -150,6 +160,95 @@ public final class TrinketsBridgeMixins {
             if (slot != null && slot.getClass().getName().startsWith("dev.emi.trinkets.")) {
                 ci.cancel();
             }
+        }
+    }
+
+    /**
+     * 镜像 Curios 槽位到 Trinkets 的 forEach 迭代。
+     *
+     * <p>SSC 的 LivingEntity.tick mixin 通过 TrinketsApi.getTrinketComponent(player).ifPresent(c -> c.forEach(...))
+     * 检测装备变化并触发 accessory_power。当玩家把 Trinket 物品装在 Curios 槽位时，
+     * 真实 trinkets 库存为空，SSC 看不到这些物品，accessory_power 不会触发。
+     *
+     * <p>本 mixin 在 forEach 末尾追加遍历 Curios 中的 Trinket 物品，
+     * 用 FakeTrinketInventory（slotType.group="curios", name=slotId）构造 SlotReference
+     * 并喂给 consumer。SSC 的差异检测以 group/name/index 为 key，因此 Curios 镜像与
+     * trinkets 原生槽位的 key 不冲突，不会重复触发。
+     */
+    @Pseudo
+    @Mixin(targets = "dev.emi.trinkets.api.LivingEntityTrinketComponent", remap = false)
+    public static abstract class LivingEntityTrinketComponentMixin {
+
+        @Inject(method = "forEach", at = @At("TAIL"), require = 0)
+        private void cti$mirrorCuriosToTrinkets(BiConsumer consumer, CallbackInfo ci) {
+            try {
+                // 反射读取 entity 字段（LivingEntityTrinketComponent.entity 为 public）
+                Field entityField;
+                try {
+                    entityField = this.getClass().getField("entity");
+                } catch (NoSuchFieldException nsf) {
+                    entityField = this.getClass().getDeclaredField("entity");
+                    entityField.setAccessible(true);
+                }
+                Object entityObj = entityField.get(this);
+                if (!(entityObj instanceof net.minecraft.world.entity.LivingEntity living)) return;
+
+                Constructor<?> slotRefCtor = TrinketDetector.getSlotReferenceConstructor();
+                if (slotRefCtor == null) return;
+
+                net.minecraftforge.common.util.LazyOptional<top.theillusivec4.curios.api.type.capability.ICuriosItemHandler> opt =
+                        CuriosApi.getCuriosInventory(living);
+                top.theillusivec4.curios.api.type.capability.ICuriosItemHandler invHandler = opt.orElse(null);
+                if (invHandler == null) return;
+
+                Map<String, ICurioStacksHandler> curios = invHandler.getCurios();
+                for (Map.Entry<String, ICurioStacksHandler> e : curios.entrySet()) {
+                    String slotId = e.getKey();
+                    IDynamicStackHandler stacks = e.getValue().getStacks();
+                    int size = stacks.getSlots();
+                    for (int i = 0; i < size; i++) {
+                        net.minecraft.world.item.ItemStack stack = stacks.getStackInSlot(i);
+                        if (stack.isEmpty()) continue;
+                        if (!TrinketDetector.isTrinket(stack.getItem())) continue;
+
+                        Object fakeInv = FakeTrinketInventory.getForSlot(slotId);
+                        if (fakeInv == null) continue;
+
+                        try {
+                            Object slotRef = slotRefCtor.newInstance(fakeInv, i);
+                            //noinspection unchecked
+                            consumer.accept(slotRef, stack);
+                        } catch (Throwable inner) {
+                            CurioTrinketBridge.LOGGER.debug("[mirror] consumer.accept 失败 slot={} index={}: {}",
+                                    slotId, i, inner.toString());
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                CurioTrinketBridge.LOGGER.debug("[mirror] forEach 注入异常：{}", t.toString());
+            }
+        }
+    }
+
+    /**
+     * 取消 TrinketItem.use() 的默认装备到 trinkets 库存逻辑。
+     *
+     * <p>所有右键装备走 BridgeEventHandler.onRightClickItem → Curios。本 mixin 防止
+     * server 走 Curios + client/服务端再走 trinkets 装入造成的物品复制（用户报告的 bug3）。
+     *
+     * <p>返回 PASS 而非 SUCCESS，让 vanilla / Forge 后续逻辑（如丢弃 / 投掷）正常处理空操作。
+     */
+    @Pseudo
+    @Mixin(targets = "dev.emi.trinkets.api.TrinketItem", remap = false)
+    public static abstract class TrinketItemUseMixin {
+
+        @Inject(method = "use", at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$cancelTrinketUse(net.minecraft.world.level.Level level,
+                                          net.minecraft.world.entity.player.Player player,
+                                          net.minecraft.world.InteractionHand hand,
+                                          CallbackInfoReturnable<net.minecraft.world.InteractionResultHolder<net.minecraft.world.item.ItemStack>> cir) {
+            net.minecraft.world.item.ItemStack held = player.getItemInHand(hand);
+            cir.setReturnValue(net.minecraft.world.InteractionResultHolder.pass(held));
         }
     }
 }

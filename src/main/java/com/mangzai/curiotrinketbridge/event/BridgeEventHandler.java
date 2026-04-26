@@ -63,9 +63,11 @@ public class BridgeEventHandler {
 
     /**
      * 拦截 Trinket 物品的右键使用，将其装备到 Curios 饰品栏。
-     * 高优先级确保在 TrinketItem.use()（尝试装入已禁用的 Trinkets 库存）之前执行。
+     * 高优先级确保在 TrinketItem.use()（已被 mixin 取消）之前执行。
      *
      * <p>只尝试将物品装入通过标签映射确定的合法槽位，而非遍历所有槽位。
+     * <p>防复制保障：TrinketItemUseMixin 在 mixin 层取消 TrinketItem.use()，
+     * 因此即使本处理器未触发，原 trinkets 路径也不会再装入 trinkets 库存。
      */
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
@@ -78,6 +80,7 @@ public class BridgeEventHandler {
         Item item = stack.getItem();
         // 获取此物品允许装入的 Curios 槽位（基于 Trinkets 标签映射）
         Set<String> validSlots = TrinketSlotResolver.getValidCuriosSlots(item);
+        if (validSlots.isEmpty()) return;
 
         boolean[] equipped = {false};
         CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
@@ -91,11 +94,6 @@ public class BridgeEventHandler {
                 IDynamicStackHandler stacks = entry.getValue().getStacks();
                 for (int i = 0; i < stacks.getSlots(); i++) {
                     if (!stacks.getStackInSlot(i).isEmpty()) continue;
-                    // 关键修复：装入前调用 ICurio.canEquip / canEquipFromUse 校验，
-                    // 触发 trinket 物品自身条件（如 sp 雪狐形态校验）。
-                    // 不通过则跳过该槽，避免右键无视条件强制装备的 bug。
-                    if (player instanceof ServerPlayer sp
-                            && !TrinketsItemMigrator.canEquipTo(sp, stack, slotId, i)) continue;
 
                     stacks.setStackInSlot(i, stack.split(1));
                     equipped[0] = true;

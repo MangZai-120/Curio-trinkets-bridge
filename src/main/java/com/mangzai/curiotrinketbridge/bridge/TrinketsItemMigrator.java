@@ -53,10 +53,15 @@ public final class TrinketsItemMigrator {
             return;
         }
 
-        // 第一遍：收集所有 trinkets 库存中非空物品（不区分原生/自定义，都迁到 Curios）
+        // 第一遍：收集所有 trinkets 库存中非空物品。
+        // P2 策略：跳过实现了 Trinket 接口（含 TrinketItem 子类）的物品——它们依赖 trinkets 框架
+        // 自身的 tick / 属性 / onEquip 事件（如 SSC 的 LivingEntity.tick mixin 触发 accessory_power），
+        // 强行迁移到 Curios 槽会导致这些机制失效。仅迁移裸 Item（仅靠 Tag 注册的纯装饰物品）。
         List<PendingMigration> pending = new ArrayList<>();
         TrinketsApiAccess.forEachEquipped(component, (slotRef, stack) -> {
             if (stack.isEmpty()) return;
+            // 跳过 Trinket 接口实现：保留在 trinkets 槽，让 trinkets / 第三方 mod 自身逻辑正常运行
+            if (TrinketDetector.isTrinket(stack.getItem())) return;
             String slotId = TrinketsApiAccess.slotIdOfRef(slotRef);
             if (slotId == null) return;
             pending.add(new PendingMigration(slotRef, stack.copy(), slotId));
