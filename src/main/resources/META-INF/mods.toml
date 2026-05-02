@@ -9,11 +9,11 @@ displayName="Curio Trinkets Bridge"
 logoFile="icon.png"
 authors="MangZai"
 description='''
-自动将 Trinkets (Fabric) 饰品桥接至 Curios API，并交由 Accessories/cclayer 使用 Accessories 原生 UI 统一显示。
-配合 Sinytra Connector 与 Accessories 使用，让基于 Trinkets/Curios 的饰品统一进入 Accessories 界面。
+自动将 Trinkets (Fabric) 饰品桥接至 Curios API，并使用内置统一饰品栏显示 Trinkets/Curios 槽位。
+配合 Sinytra Connector 使用，让基于 Trinkets 的 Fabric 模组在 Forge 端自动使用 Curios 系统。
 
-Automatically bridges Trinkets (Fabric) accessories to the Curios API, then lets Accessories/cclayer display them in the native Accessories UI.
-Works with Sinytra Connector and Accessories to unify Trinkets/Curios accessories in the Accessories screen.
+Automatically bridges Trinkets (Fabric) accessories to the Curios API and displays Trinkets/Curios slots in the built-in unified accessories screen.
+Works with Sinytra Connector to let Trinkets-based Fabric mods use Curios on Forge.
 '''
 
 [[dependencies.curio_trinkets_bridge]]
@@ -33,21 +33,7 @@ side="BOTH"
 [[dependencies.curio_trinkets_bridge]]
 modId="curios"
 mandatory=true
-versionRange="[0,)"
-ordering="AFTER"
-side="BOTH"
-
-[[dependencies.curio_trinkets_bridge]]
-modId="accessories"
-mandatory=true
-versionRange="[1.0.0-beta.36,)"
-ordering="AFTER"
-side="BOTH"
-
-[[dependencies.curio_trinkets_bridge]]
-modId="cclayer"
-mandatory=true
-versionRange="[0,)"
+versionRange="[5.0,)"
 ordering="AFTER"
 side="BOTH"
 

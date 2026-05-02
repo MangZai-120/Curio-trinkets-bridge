@@ -11,8 +11,7 @@
   "client": [
     "TrinketsBridgeMixins$TrinketScreenManagerMixin",
     "TrinketsBridgeMixins$SurvivalTrinketSlotMixin",
-    "TrinketsBridgeMixins$AbstractContainerScreenSlotMixin",
-    "TrinketsBridgeMixins$ClientLanguageMixin"
+    "TrinketsBridgeMixins$AbstractContainerScreenSlotMixin"
   ],
   "injectors": {
     "maxShiftBy": 5
