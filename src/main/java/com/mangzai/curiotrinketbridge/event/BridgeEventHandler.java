@@ -1,6 +1,7 @@
 package com.mangzai.curiotrinketbridge.event;
 
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
+import com.mangzai.curiotrinketbridge.bridge.CuriosTrinketLifecycleTracker;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
 import com.mangzai.curiotrinketbridge.bridge.TrinketSlotResolver;
 import com.mangzai.curiotrinketbridge.bridge.TrinketsItemMigrator;
@@ -61,6 +62,13 @@ public class BridgeEventHandler {
         }
     }
 
+    @SubscribeEvent
+    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer sp) {
+            CuriosTrinketLifecycleTracker.clear(sp);
+        }
+    }
+
     /**
      * 拦截 Trinket 物品的右键使用，将其装备到 Curios 饰品栏。
      * 高优先级确保在 TrinketItem.use()（已被 mixin 取消）之前执行。
@@ -71,11 +79,15 @@ public class BridgeEventHandler {
      */
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
-        if (event.getLevel().isClientSide()) return;
-
         Player player = event.getEntity();
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty() || !TrinketDetector.isTrinket(stack.getItem())) return;
+
+        // 只要是 Trinket 物品右键，就必须拦截原生 use 路径；否则 Curios 目标槽满时会回落到 TrinketItem.equipItem。
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.FAIL);
+
+        if (event.getLevel().isClientSide()) return;
         if (!(player instanceof ServerPlayer serverPlayer)) return;
 
         Item item = stack.getItem();
@@ -107,7 +119,6 @@ public class BridgeEventHandler {
         if (equipped[0]) {
             player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.ARMOR_EQUIP_GENERIC, SoundSource.PLAYERS, 1.0f, 1.0f);
-            event.setCanceled(true);
             event.setCancellationResult(InteractionResult.sidedSuccess(false));
         }
     }
@@ -119,9 +130,17 @@ public class BridgeEventHandler {
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
+        if (!TrinketDetector.isTrinketsLoaded()) return;
+        try {
+            for (ServerPlayer sp : event.getServer().getPlayerList().getPlayers()) {
+                CuriosTrinketLifecycleTracker.tick(sp);
+            }
+        } catch (Throwable t) {
+            CurioTrinketBridge.LOGGER.debug("[BridgeEventHandler] Curios Trinket 生命周期扫描异常：{}", t.toString());
+        }
+
         if (++migrationTickCounter < 20) return;
         migrationTickCounter = 0;
-        if (!TrinketDetector.isTrinketsLoaded()) return;
         try {
             for (ServerPlayer sp : event.getServer().getPlayerList().getPlayers()) {
                 TrinketsItemMigrator.migrate(sp);
