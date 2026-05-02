@@ -52,9 +52,8 @@ public final class TrinketSlotResolver {
         for (Map.Entry<String, String> entry : SlotMapper.INSTANCE.getAllMappings().entrySet()) {
             String trinketSlot = entry.getKey();   // 如 "hand/ring"
             String curiosSlot = entry.getValue();  // 如 "ring"
-            @SuppressWarnings("deprecation")
             TagKey<Item> tag = TagKey.create(Registries.ITEM,
-                    new ResourceLocation("trinkets", trinketSlot));
+                    ResourceLocation.fromNamespaceAndPath("trinkets", trinketSlot));
             list.add(new TagMapping(tag, curiosSlot, trinketSlot));
         }
         tagMappings = List.copyOf(list);

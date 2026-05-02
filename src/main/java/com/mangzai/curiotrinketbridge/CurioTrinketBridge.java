@@ -57,7 +57,7 @@ public class CurioTrinketBridge {
      */
     private void registerTrinketTagPredicate() {
         CuriosApi.registerCurioPredicate(
-                new ResourceLocation(MOD_ID, "trinket_tag"),
+                ResourceLocation.fromNamespaceAndPath(MOD_ID, "trinket_tag"),
                 (slotResult) -> {
                     ItemStack stack = slotResult.stack();
                     Item item = stack.getItem();

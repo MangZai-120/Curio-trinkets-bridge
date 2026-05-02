@@ -19,7 +19,7 @@ public final class BridgeNetwork {
     private static final String PROTOCOL_VERSION = "1";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
-            .named(new ResourceLocation(CurioTrinketBridge.MOD_ID, "main"))
+            .named(ResourceLocation.fromNamespaceAndPath(CurioTrinketBridge.MOD_ID, "main"))
             .networkProtocolVersion(() -> PROTOCOL_VERSION)
             // 双端可选：未安装本模组的端不会因协议不匹配被踢
             .clientAcceptedVersions(v -> true)

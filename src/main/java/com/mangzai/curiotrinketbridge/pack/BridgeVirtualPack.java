@@ -59,7 +59,7 @@ public final class BridgeVirtualPack implements PackResources {
             // 2) slot 名能命中通用兜底（如 cape→back, glove→hands）也跳过，避免重复造槽
             if (nameFallback.containsKey(slot.slot())) continue;
             byte[] payload = buildCuriosSlotJson(slot);
-            ResourceLocation loc = new ResourceLocation("curios",
+            ResourceLocation loc = ResourceLocation.fromNamespaceAndPath("curios",
                     "curios/slots/" + slot.curiosSlotId() + ".json");
             dataEntries.put(loc, payload);
             dataNamespaces.add(loc.getNamespace());
@@ -70,7 +70,7 @@ public final class BridgeVirtualPack implements PackResources {
         // 仅定义 slot 不会出现在玩家 GUI；必须再写一份 entities/player.json 把 slot 附加到玩家
         if (!generatedSlotIds.isEmpty()) {
             byte[] entityJson = buildEntitiesJson(generatedSlotIds);
-            ResourceLocation loc = new ResourceLocation("curios", "curios/entities/player.json");
+            ResourceLocation loc = ResourceLocation.fromNamespaceAndPath("curios", "curios/entities/player.json");
             dataEntries.put(loc, entityJson);
             dataNamespaces.add(loc.getNamespace());
         }

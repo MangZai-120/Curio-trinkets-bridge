@@ -3,6 +3,7 @@ package com.mangzai.curiotrinketbridge.client;
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import com.mangzai.curiotrinketbridge.bridge.FakeTrinketInventory;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
+import com.mangzai.curiotrinketbridge.bridge.TrinketSlotResolver;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -14,6 +15,8 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import top.theillusivec4.curios.api.SlotContext;
 import top.theillusivec4.curios.api.client.ICurioRenderer;
+import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -58,7 +61,9 @@ public class TrinketRendererBridge implements ICurioRenderer {
         if (ctor == null) return;
 
         try {
-            Object slotRef = ctor.newInstance(FakeTrinketInventory.get(), slotContext.index());
+            String trinketSlotId = TrinketSlotResolver.toTrinketSlotId(this.item, slotContext.identifier());
+            Object inventory = resolveLinkedInventory(slotContext, trinketSlotId);
+            Object slotRef = ctor.newInstance(inventory, Math.max(0, slotContext.index()));
             EntityModel<T> contextModel = renderLayerParent.getModel();
             // Trinket render 参数顺序：stack, slotRef, contextModel, matrices, vertexConsumers,
             // light, entity, limbAngle, limbDistance, tickDelta, animationProgress, headYaw, headPitch
@@ -78,6 +83,30 @@ public class TrinketRendererBridge implements ICurioRenderer {
                     headPitch);
         } catch (Exception e) {
             CurioTrinketBridge.LOGGER.debug("TrinketRenderer.render 调用失败 (item={}): {}", item, e.getMessage());
+        }
+    }
+
+    private Object resolveLinkedInventory(SlotContext slotContext, String trinketSlotId) {
+        LivingEntity living = slotContext.entity();
+        if (living == null) {
+            return FakeTrinketInventory.getForTrinketSlotId(trinketSlotId);
+        }
+
+        try {
+            return CuriosApi.getCuriosInventory(living)
+                    .resolve()
+                    .flatMap(handler -> handler.getStacksHandler(slotContext.identifier()))
+                    .map(handler -> {
+                        IDynamicStackHandler stacks = slotContext.cosmetic()
+                                ? handler.getCosmeticStacks()
+                                : handler.getStacks();
+                        int safeIndex = Math.max(0, slotContext.index());
+                        return FakeTrinketInventory.getLinkedForTrinketSlotId(trinketSlotId, stacks, new int[] {safeIndex});
+                    })
+                    .orElseGet(() -> FakeTrinketInventory.getForTrinketSlotId(trinketSlotId));
+        } catch (Throwable t) {
+            CurioTrinketBridge.LOGGER.debug("TrinketRenderer 槽位上下文解析失败 (slot={}): {}", slotContext.identifier(), t.toString());
+            return FakeTrinketInventory.getForTrinketSlotId(trinketSlotId);
         }
     }
 }

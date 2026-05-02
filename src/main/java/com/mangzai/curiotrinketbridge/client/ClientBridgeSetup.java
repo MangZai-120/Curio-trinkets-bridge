@@ -2,12 +2,15 @@ package com.mangzai.curiotrinketbridge.client;
 
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
+import com.mangzai.curiotrinketbridge.client.gui.UnifiedCuriosScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import top.theillusivec4.curios.api.client.CuriosRendererRegistry;
+import top.theillusivec4.curios.common.CuriosRegistry;
 
 /**
  * 客户端启动时扫描所有 Trinket 物品，若该物品已通过
@@ -24,6 +27,10 @@ public final class ClientBridgeSetup {
         if (!TrinketDetector.isTrinketsLoaded()) return;
 
         event.enqueueWork(() -> {
+            MenuScreens.register(CuriosRegistry.CURIO_MENU.get(), UnifiedCuriosScreen.Legacy::new);
+            MenuScreens.register(CuriosRegistry.CURIO_MENU_NEW.get(), UnifiedCuriosScreen.Revamp::new);
+            CurioTrinketBridge.LOGGER.info("[CurioTrinketBridge] 已接管 Curios 原生 UI，使用统一饰品界面");
+
             int registered = 0;
             for (Item item : BuiltInRegistries.ITEM) {
                 if (!TrinketDetector.isTrinket(item)) continue;

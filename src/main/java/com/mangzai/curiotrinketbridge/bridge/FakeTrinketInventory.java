@@ -171,7 +171,7 @@ public final class FakeTrinketInventory {
             setField(slotTypeClass, slotType, "name", slot);
             setFieldInt(slotTypeClass, slotType, "order", 0);
             setFieldInt(slotTypeClass, slotType, "amount", inventorySize);
-            setField(slotTypeClass, slotType, "icon", new ResourceLocation("trinkets", "slot"));
+            setField(slotTypeClass, slotType, "icon", ResourceLocation.fromNamespaceAndPath("trinkets", "slot"));
             setField(slotTypeClass, slotType, "quickMovePredicates", Collections.emptySet());
             setField(slotTypeClass, slotType, "validatorPredicates", Collections.emptySet());
             setField(slotTypeClass, slotType, "tooltipPredicates", Collections.emptySet());

@@ -1,3 +1,8 @@
 {
-  "tooltip.curio_trinkets_bridge.slots": "可装备槽位 (Trinkets→Curios)："
+  "tooltip.curio_trinkets_bridge.slots": "可装备槽位 (Trinkets→Curios)：",
+  "screen.curio_trinkets_bridge.unified_accessories": "饰品",
+  "tooltip.curio_trinkets_bridge.toggle_render": "切换饰品渲染",
+  "tooltip.curio_trinkets_bridge.previous_page": "上一页",
+  "tooltip.curio_trinkets_bridge.next_page": "下一页",
+  "tooltip.curio_trinkets_bridge.toggle_cosmetics": "切换饰品/外观槽"
 }

@@ -1,3 +1,8 @@
 {
-  "tooltip.curio_trinkets_bridge.slots": "Equippable Slots (Trinkets→Curios):"
+  "tooltip.curio_trinkets_bridge.slots": "Equippable Slots (Trinkets→Curios):",
+  "screen.curio_trinkets_bridge.unified_accessories": "Accessories",
+  "tooltip.curio_trinkets_bridge.toggle_render": "Toggle accessory rendering",
+  "tooltip.curio_trinkets_bridge.previous_page": "Previous page",
+  "tooltip.curio_trinkets_bridge.next_page": "Next page",
+  "tooltip.curio_trinkets_bridge.toggle_cosmetics": "Toggle accessory/cosmetic slots"
 }
