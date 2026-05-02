@@ -151,14 +151,8 @@ public final class SlotMapper extends SimpleJsonResourceReloadListener {
     private void mergeDiscoveredSlots() {
         try {
             for (TrinketSlotDiscovery.DiscoveredSlot s : TrinketSlotDiscovery.getOrScan().values()) {
-                // 优先按 slot 名兜底，命中则映射到 Curios 内置槽位（原生近似映射）；
-                // 未命中的纯自定义槽映射到 trinkets_<slot>（由 BridgeVirtualPack 生成同名 Curios 槽）。
-                String fallback = SLOT_NAME_FALLBACK.get(s.slot());
-                if (fallback != null) {
-                    slotMap.putIfAbsent(s.trinketSlotId(), fallback);
-                } else {
-                    slotMap.putIfAbsent(s.trinketSlotId(), s.curiosSlotId());
-                }
+                // 只有内置默认槽折叠到 Curios 原槽；其它 Trinkets 槽保留独立 UI、图标与名称。
+                slotMap.putIfAbsent(s.trinketSlotId(), s.curiosSlotId());
             }
         } catch (Throwable t) {
             CurioTrinketBridge.LOGGER.debug("[SlotMapper] 合并发现槽位失败: {}", t.toString());

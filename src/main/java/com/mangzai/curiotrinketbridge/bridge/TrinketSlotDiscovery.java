@@ -31,7 +31,7 @@ public final class TrinketSlotDiscovery {
             String group,
             String slot,
             String trinketSlotId,   // 例如 "hand/ring"
-            String curiosSlotId,    // 例如 "trinkets_ring"
+            String curiosSlotId,    // 例如 "trinkets_hand_ring"
             String icon,            // 可能为 null
             int order,
             int amount
@@ -119,11 +119,10 @@ public final class TrinketSlotDiscovery {
         String slot = slotFile.substring(0, slotFile.length() - 5);
 
         String trinketSlotId = group + "/" + slot;
-        String curiosSlotId = "trinkets_" + slot;
+        String curiosSlotId = "trinkets_" + sanitize(group) + "_" + sanitize(slot);
 
-        // 同名（如 hand/ring 与 offhand/ring）只取首个，避免重复 Curios 槽位
+        // 同一组/同一槽只取首个，避免重复 Curios 槽位
         if (SLOTS.containsKey(curiosSlotId)) {
-            // 已存在则只补充 SlotMapper 用的 trinketSlotId 多对一映射，由调用方 (SlotMapper) 处理
             return false;
         }
 
@@ -141,5 +140,10 @@ public final class TrinketSlotDiscovery {
 
         SLOTS.put(curiosSlotId, new DiscoveredSlot(group, slot, trinketSlotId, curiosSlotId, icon, order, amount));
         return true;
+    }
+
+    private static String sanitize(String id) {
+        String normalized = id.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_");
+        return normalized.isBlank() ? "slot" : normalized;
     }
 }

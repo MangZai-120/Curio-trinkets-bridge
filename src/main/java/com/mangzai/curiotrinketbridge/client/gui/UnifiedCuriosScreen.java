@@ -1,11 +1,13 @@
 package com.mangzai.curiotrinketbridge.client.gui;
 
+import com.mangzai.curiotrinketbridge.bridge.TrinketSlotDiscovery;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -27,6 +29,7 @@ import top.theillusivec4.curios.common.network.client.CPacketToggleRender;
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 使用 Accessories 风格绘制 Curios/Trinkets 的统一饰品界面。
@@ -223,9 +226,53 @@ public class UnifiedCuriosScreen<T extends AbstractContainerMenu> extends Abstra
         if (this.hoveredSlot instanceof CurioSlot curioSlot && !this.hoveredSlot.hasItem()) {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player != null && player.inventoryMenu.getCarried().isEmpty()) {
-                guiGraphics.renderTooltip(this.font, Component.literal(curioSlot.getSlotName()), mouseX, mouseY);
+                guiGraphics.renderTooltip(this.font, this.slotDisplayName(curioSlot), mouseX, mouseY);
             }
         }
+    }
+
+    private Component slotDisplayName(CurioSlot curioSlot) {
+        Component base = this.baseSlotDisplayName(curioSlot.getIdentifier());
+        if (curioSlot instanceof CosmeticCurioSlot || curioSlot.isCosmetic()) {
+            return Component.translatable("curios.cosmetic").append(" ").append(base);
+        }
+        return base;
+    }
+
+    private Component baseSlotDisplayName(String identifier) {
+        TrinketSlotDiscovery.DiscoveredSlot trinketSlot = this.discoveredTrinketSlot(identifier);
+        if (trinketSlot != null) {
+            String exactKey = "trinkets.slot." + trinketSlot.group() + "." + trinketSlot.slot();
+            if (I18n.exists(exactKey)) return Component.translatable(exactKey);
+
+            String shortKey = "trinkets.slot." + trinketSlot.slot();
+            if (I18n.exists(shortKey)) return Component.translatable(shortKey);
+
+            return Component.literal(formatIdentifier(trinketSlot.slot()));
+        }
+
+        String curiosKey = "curios.identifier." + identifier;
+        if (I18n.exists(curiosKey)) return Component.translatable(curiosKey);
+        return Component.literal(formatIdentifier(identifier));
+    }
+
+    private TrinketSlotDiscovery.DiscoveredSlot discoveredTrinketSlot(String identifier) {
+        for (TrinketSlotDiscovery.DiscoveredSlot slot : TrinketSlotDiscovery.getOrScan().values()) {
+            if (slot.curiosSlotId().equals(identifier)) return slot;
+        }
+        return null;
+    }
+
+    private static String formatIdentifier(String identifier) {
+        String[] parts = identifier.replace("trinkets_", "").split("[_-]");
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) continue;
+            if (!builder.isEmpty()) builder.append(' ');
+            builder.append(part.substring(0, 1).toUpperCase(Locale.ROOT));
+            if (part.length() > 1) builder.append(part.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return builder.isEmpty() ? identifier : builder.toString();
     }
 
     private List<PanelButton> panelButtons() {

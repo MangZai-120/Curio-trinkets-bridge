@@ -56,8 +56,7 @@ public final class BridgeVirtualPack implements PackResources {
         for (TrinketSlotDiscovery.DiscoveredSlot slot : discovered.values()) {
             // 1) 已被默认映射覆盖到既有 Curios 槽位的，跳过生成
             if (defaults.containsKey(slot.trinketSlotId())) continue;
-            // 2) slot 名能命中通用兜底（如 cape→back, glove→hands）也跳过，避免重复造槽
-            if (nameFallback.containsKey(slot.slot())) continue;
+            // 2) 非默认 Trinkets 槽必须保留独立 UI，不能按名称兜底折叠，否则会丢失自定义图标和名字。
             byte[] payload = buildCuriosSlotJson(slot);
             ResourceLocation loc = ResourceLocation.fromNamespaceAndPath("curios",
                     "curios/slots/" + slot.curiosSlotId() + ".json");
