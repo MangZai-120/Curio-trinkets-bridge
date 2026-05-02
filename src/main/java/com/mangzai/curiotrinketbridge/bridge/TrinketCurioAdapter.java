@@ -6,9 +6,13 @@ import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import top.theillusivec4.curios.api.CuriosApi;
 import top.theillusivec4.curios.api.SlotContext;
 import top.theillusivec4.curios.api.type.capability.ICurio;
+import top.theillusivec4.curios.api.type.capability.ICuriosItemHandler;
 import top.theillusivec4.curios.api.type.capability.ICurioItem;
+import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
+import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
 import javax.annotation.Nonnull;
 import java.lang.reflect.Constructor;
@@ -65,16 +69,31 @@ public class TrinketCurioAdapter implements ICurioItem {
      * 浣跨敤 {@link FakeTrinketInventory} 鎻愪緵鐨勪吉瀹炰緥浠ｆ浛 null锛?
      * 鍑忓皯 Trinket 鍐呴儴璁块棶 inventory() 鏃剁殑 NPE 椋庨櫓銆?
      */
-    private static Object createSlotReference(SlotContext slotContext) {
+    private Object createSlotReference(SlotContext slotContext) {
         Constructor<?> ctor = TrinketDetector.getSlotReferenceConstructor();
         if (ctor == null) return null;
         try {
-            // 关键修复：按 Curios 槽位 ID 提供带 SlotType 的伪库存
-            // 避免 Trinket 实现调用 ref.inventory().getSlotType().getGroup()/getName() 时 NPE
-            Object fakeInv = FakeTrinketInventory.getForSlot(slotContext.identifier());
+            String trinketSlotId = TrinketSlotResolver.toTrinketSlotId(trinketItem, slotContext.identifier());
+            Object fakeInv = createLinkedInventory(slotContext, trinketSlotId);
+            if (fakeInv == null) {
+                fakeInv = FakeTrinketInventory.getForTrinketSlotId(trinketSlotId, slotContext.index() + 1);
+            }
             return ctor.newInstance(fakeInv, slotContext.index());
         } catch (Exception e) {
             CurioTrinketBridge.LOGGER.debug("创建 SlotReference 失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Object createLinkedInventory(SlotContext slotContext, String trinketSlotId) {
+        try {
+            ICuriosItemHandler curiosHandler = CuriosApi.getCuriosInventory(slotContext.entity()).orElse(null);
+            if (curiosHandler == null) return null;
+            ICurioStacksHandler slotHandler = curiosHandler.getCurios().get(slotContext.identifier());
+            if (slotHandler == null) return null;
+            IDynamicStackHandler stacks = slotHandler.getStacks();
+            return FakeTrinketInventory.getLinkedForTrinketSlotId(trinketSlotId, stacks);
+        } catch (Throwable t) {
             return null;
         }
     }

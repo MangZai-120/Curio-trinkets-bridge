@@ -1,36 +1,36 @@
 package com.mangzai.curiotrinketbridge.mixin;
 
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
+import com.mangzai.curiotrinketbridge.bridge.CuriosTrinketsMirror;
 import com.mangzai.curiotrinketbridge.bridge.FakeTrinketInventory;
-import com.mangzai.curiotrinketbridge.bridge.TrinketDetector;
 import com.mangzai.curiotrinketbridge.bridge.TrinketsApiAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import top.theillusivec4.curios.api.CuriosApi;
-import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
-import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 
 /**
  * Curio Trinkets Bridge 的所有 Mixin 集合。
  *
  * <p>设计：所有 Trinkets 槽位（含玩家自定义）都被映射到 Curios。
- * Trinkets 自身的 API / 库存 tick / UI 全部禁用，避免出现两套饰品系统并存。
+ * Trinkets 自身 UI 禁用，真实库存逐步迁移到 Curios；Trinkets 查询 API 保留并镜像 Curios，
+ * 让依赖 Trinkets API 的其它模组仍能看到 Curios 中的 Trinket 物品。
  * 自定义 trinkets 槽位通过 BridgeVirtualPack 在 Curios 中创建同名槽位（{@code trinkets_<slot>}）
  * 并透传 trinkets JSON 中的 icon。
  *
  * <ul>
- *   <li>{@link TrinketsApiMixin} - 公共端：使 TrinketsApi.getTrinketComponent 始终返回空</li>
  *   <li>{@link TrinketInventoryMixin} - 公共端：禁用 TrinketInventory 的 tick / update</li>
+ *   <li>{@link LivingEntityTrinketComponentMixin} - 公共端：把 Curios Trinket 镜像进 Trinkets 查询 API</li>
  *   <li>{@link TrinketScreenManagerMixin} - 客户端：禁用 Trinkets 的 UI 渲染与点击</li>
  *   <li>{@link SurvivalTrinketSlotMixin} - 客户端：让残留的 SurvivalTrinketSlot 完全失效</li>
  * </ul>
@@ -40,8 +40,10 @@ public final class TrinketsBridgeMixins {
     private TrinketsBridgeMixins() {}
 
     /**
-     * 禁用 Trinkets API 的核心组件访问。
-     * 使 Trinkets 系统认为实体没有 Trinket 组件，所有饰品管理改由 Curios 接管。
+        * 旧方案保留：禁用 Trinkets API 的核心组件访问。
+        *
+        * <p>当前 mixins.json 不注册此 mixin，因为通用兼容需要其它模组仍能拿到 TrinketComponent，
+        * 再由 LivingEntityTrinketComponentMixin 将 Curios 中的物品镜像给这些查询。
      */
     @Pseudo
     @Mixin(targets = "dev.emi.trinkets.api.TrinketsApi", remap = false)
@@ -72,6 +74,65 @@ public final class TrinketsBridgeMixins {
         @Inject(method = "update", at = @At("HEAD"), cancellable = true, require = 0)
         private void cancelUpdate(CallbackInfo ci) {
             ci.cancel();
+        }
+
+        @Unique
+        private FakeTrinketInventory.LinkedInventory cti$linkedInventory() {
+            return FakeTrinketInventory.getLinked(this);
+        }
+
+        @Inject(method = {"size", "getContainerSize"}, at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$size(CallbackInfoReturnable<Integer> cir) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) cir.setReturnValue(linked.size());
+        }
+
+        @Inject(method = "isEmpty", at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$isEmpty(CallbackInfoReturnable<Boolean> cir) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) cir.setReturnValue(linked.isEmpty());
+        }
+
+        @Inject(method = {"getStack", "getItem"}, at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$getStack(int slot, CallbackInfoReturnable<ItemStack> cir) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) cir.setReturnValue(linked.getStack(slot));
+        }
+
+        @Inject(method = {"setStack", "setItem"}, at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$setStack(int slot, ItemStack stack, CallbackInfo ci) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) {
+                linked.setStack(slot, stack);
+                ci.cancel();
+            }
+        }
+
+        @Inject(method = {
+                "removeStack(I)Lnet/minecraft/world/item/ItemStack;",
+                "removeItemNoUpdate(I)Lnet/minecraft/world/item/ItemStack;"
+        }, at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$removeStack(int slot, CallbackInfoReturnable<ItemStack> cir) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) cir.setReturnValue(linked.removeStack(slot));
+        }
+
+        @Inject(method = {
+                "removeStack(II)Lnet/minecraft/world/item/ItemStack;",
+                "removeItem(II)Lnet/minecraft/world/item/ItemStack;"
+        }, at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$removeStackAmount(int slot, int amount, CallbackInfoReturnable<ItemStack> cir) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) cir.setReturnValue(linked.removeStack(slot, amount));
+        }
+
+        @Inject(method = {"clear", "clearContent"}, at = @At("HEAD"), cancellable = true, require = 0)
+        private void cti$clear(CallbackInfo ci) {
+            FakeTrinketInventory.LinkedInventory linked = cti$linkedInventory();
+            if (linked != null) {
+                linked.clear();
+                ci.cancel();
+            }
         }
     }
 
@@ -164,69 +225,52 @@ public final class TrinketsBridgeMixins {
     }
 
     /**
-     * 镜像 Curios 槽位到 Trinkets 的 forEach 迭代。
+        * 镜像 Curios 槽位到 Trinkets 查询 API。
      *
      * <p>SSC 的 LivingEntity.tick mixin 通过 TrinketsApi.getTrinketComponent(player).ifPresent(c -> c.forEach(...))
      * 检测装备变化并触发 accessory_power。当玩家把 Trinket 物品装在 Curios 槽位时，
      * 真实 trinkets 库存为空，SSC 看不到这些物品，accessory_power 不会触发。
      *
-     * <p>本 mixin 在 forEach 末尾追加遍历 Curios 中的 Trinket 物品，
-     * 用 FakeTrinketInventory（slotType.group="curios", name=slotId）构造 SlotReference
-     * 并喂给 consumer。SSC 的差异检测以 group/name/index 为 key，因此 Curios 镜像与
-     * trinkets 原生槽位的 key 不冲突，不会重复触发。
+        * <p>本 mixin 覆盖 forEach / isEquipped / getInventory 三类常见查询面，兼容更多
+        * “依据饰品添加 power / 渲染 / 执行动作”的 Trinkets 生态模组。
      */
     @Pseudo
     @Mixin(targets = "dev.emi.trinkets.api.LivingEntityTrinketComponent", remap = false)
     public static abstract class LivingEntityTrinketComponentMixin {
 
+        @Inject(method = "forEach", at = @At("HEAD"), require = 0)
+        private void cti$suppressInventoryMirrorDuringForEach(BiConsumer consumer, CallbackInfo ci) {
+            CuriosTrinketsMirror.SUPPRESS_INVENTORY_MIRROR.set(true);
+        }
+
         @Inject(method = "forEach", at = @At("TAIL"), require = 0)
         private void cti$mirrorCuriosToTrinkets(BiConsumer consumer, CallbackInfo ci) {
-            try {
-                // 反射读取 entity 字段（LivingEntityTrinketComponent.entity 为 public）
-                Field entityField;
+            CuriosTrinketsMirror.SUPPRESS_INVENTORY_MIRROR.set(false);
+            LivingEntity living = CuriosTrinketsMirror.resolveEntity(this);
+            CuriosTrinketsMirror.forEachMirrored(living, (slotRef, stack) -> {
                 try {
-                    entityField = this.getClass().getField("entity");
-                } catch (NoSuchFieldException nsf) {
-                    entityField = this.getClass().getDeclaredField("entity");
-                    entityField.setAccessible(true);
+                    //noinspection unchecked
+                    consumer.accept(slotRef, stack);
+                } catch (Throwable inner) {
+                    CurioTrinketBridge.LOGGER.debug("[mirror] consumer.accept 失败: {}", inner.toString());
                 }
-                Object entityObj = entityField.get(this);
-                if (!(entityObj instanceof net.minecraft.world.entity.LivingEntity living)) return;
+            });
+        }
 
-                Constructor<?> slotRefCtor = TrinketDetector.getSlotReferenceConstructor();
-                if (slotRefCtor == null) return;
-
-                net.minecraftforge.common.util.LazyOptional<top.theillusivec4.curios.api.type.capability.ICuriosItemHandler> opt =
-                        CuriosApi.getCuriosInventory(living);
-                top.theillusivec4.curios.api.type.capability.ICuriosItemHandler invHandler = opt.orElse(null);
-                if (invHandler == null) return;
-
-                Map<String, ICurioStacksHandler> curios = invHandler.getCurios();
-                for (Map.Entry<String, ICurioStacksHandler> e : curios.entrySet()) {
-                    String slotId = e.getKey();
-                    IDynamicStackHandler stacks = e.getValue().getStacks();
-                    int size = stacks.getSlots();
-                    for (int i = 0; i < size; i++) {
-                        net.minecraft.world.item.ItemStack stack = stacks.getStackInSlot(i);
-                        if (stack.isEmpty()) continue;
-                        if (!TrinketDetector.isTrinket(stack.getItem())) continue;
-
-                        Object fakeInv = FakeTrinketInventory.getForSlot(slotId);
-                        if (fakeInv == null) continue;
-
-                        try {
-                            Object slotRef = slotRefCtor.newInstance(fakeInv, i);
-                            //noinspection unchecked
-                            consumer.accept(slotRef, stack);
-                        } catch (Throwable inner) {
-                            CurioTrinketBridge.LOGGER.debug("[mirror] consumer.accept 失败 slot={} index={}: {}",
-                                    slotId, i, inner.toString());
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                CurioTrinketBridge.LOGGER.debug("[mirror] forEach 注入异常：{}", t.toString());
+        @Inject(method = "isEquipped", at = @At("RETURN"), cancellable = true, require = 0)
+        private void cti$mirrorCuriosIsEquipped(Predicate<ItemStack> predicate, CallbackInfoReturnable<Boolean> cir) {
+            if (Boolean.TRUE.equals(cir.getReturnValue())) return;
+            LivingEntity living = CuriosTrinketsMirror.resolveEntity(this);
+            if (CuriosTrinketsMirror.anyMirroredMatches(living, predicate)) {
+                cir.setReturnValue(true);
             }
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        @Inject(method = "getInventory", at = @At("RETURN"), cancellable = true, require = 0)
+        private void cti$mirrorCuriosInventory(CallbackInfoReturnable<Map> cir) {
+            LivingEntity living = CuriosTrinketsMirror.resolveEntity(this);
+            cir.setReturnValue(CuriosTrinketsMirror.mirrorInventory(living, cir.getReturnValue()));
         }
     }
 

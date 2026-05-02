@@ -53,19 +53,20 @@ public final class TrinketsItemMigrator {
             return;
         }
 
-        // 第一遍：收集所有 trinkets 库存中非空物品。
-        // P2 策略：跳过实现了 Trinket 接口（含 TrinketItem 子类）的物品——它们依赖 trinkets 框架
-        // 自身的 tick / 属性 / onEquip 事件（如 SSC 的 LivingEntity.tick mixin 触发 accessory_power），
-        // 强行迁移到 Curios 槽会导致这些机制失效。仅迁移裸 Item（仅靠 Tag 注册的纯装饰物品）。
+        // 第一遍：只收集真实 trinkets 库存中非空物品。
+        // 扫描期间临时关闭 Curios 镜像，避免把已经在 Curios 的物品误判为“待迁移源”。
         List<PendingMigration> pending = new ArrayList<>();
-        TrinketsApiAccess.forEachEquipped(component, (slotRef, stack) -> {
-            if (stack.isEmpty()) return;
-            // 跳过 Trinket 接口实现：保留在 trinkets 槽，让 trinkets / 第三方 mod 自身逻辑正常运行
-            if (TrinketDetector.isTrinket(stack.getItem())) return;
-            String slotId = TrinketsApiAccess.slotIdOfRef(slotRef);
-            if (slotId == null) return;
-            pending.add(new PendingMigration(slotRef, stack.copy(), slotId));
-        });
+        CuriosTrinketsMirror.SUPPRESS_MIRROR.set(true);
+        try {
+            TrinketsApiAccess.forEachEquipped(component, (slotRef, stack) -> {
+                if (stack.isEmpty()) return;
+                String slotId = TrinketsApiAccess.slotIdOfRef(slotRef);
+                if (slotId == null) return;
+                pending.add(new PendingMigration(slotRef, stack.copy(), slotId));
+            });
+        } finally {
+            CuriosTrinketsMirror.SUPPRESS_MIRROR.set(false);
+        }
 
         if (pending.isEmpty()) return;
         CurioTrinketBridge.LOGGER.debug("[Migrator] {}: 待迁移 {} 件",
@@ -149,7 +150,8 @@ public final class TrinketsItemMigrator {
             if (handler == null) handler = stack.getItem();
             Constructor<?> ctor = TrinketDetector.getSlotReferenceConstructor();
             if (ctor == null) return true;
-            Object inv = FakeTrinketInventory.getForSlot(slotId);
+            String trinketSlotId = TrinketSlotResolver.toTrinketSlotId(stack.getItem(), slotId);
+            Object inv = FakeTrinketInventory.getForTrinketSlotId(trinketSlotId, index + 1);
             if (inv == null) return true;
             Object slotRef = ctor.newInstance(inv, index);
             Object result = m.invoke(handler, stack, slotRef, player);

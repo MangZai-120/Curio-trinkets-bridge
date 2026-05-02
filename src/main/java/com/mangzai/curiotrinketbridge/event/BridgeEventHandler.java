@@ -76,6 +76,7 @@ public class BridgeEventHandler {
         Player player = event.getEntity();
         ItemStack stack = event.getItemStack();
         if (stack.isEmpty() || !TrinketDetector.isTrinket(stack.getItem())) return;
+        if (!(player instanceof ServerPlayer serverPlayer)) return;
 
         Item item = stack.getItem();
         // 获取此物品允许装入的 Curios 槽位（基于 Trinkets 标签映射）
@@ -94,6 +95,7 @@ public class BridgeEventHandler {
                 IDynamicStackHandler stacks = entry.getValue().getStacks();
                 for (int i = 0; i < stacks.getSlots(); i++) {
                     if (!stacks.getStackInSlot(i).isEmpty()) continue;
+                    if (!TrinketsItemMigrator.canEquipTo(serverPlayer, stack, slotId, i)) continue;
 
                     stacks.setStackInSlot(i, stack.split(1));
                     equipped[0] = true;

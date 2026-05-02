@@ -100,6 +100,45 @@ public final class TrinketSlotResolver {
     }
 
     /**
+     * 根据物品标签和当前 Curios 槽位反查最合适的 Trinkets 原始槽位 ID。
+     *
+     * <p>优先使用物品实际拥有的 trinkets:* 标签，确保调用 Trinket.canEquip/tick/onEquip 时
+     * SlotReference 中的 SlotType 仍接近 Fabric Trinkets 原语义。找不到标签时，再按当前
+     * SlotMapper 映射表从 Curios 槽位反推；最后才退回 {@code curios/<slot>}。
+     */
+    public static String toTrinketSlotId(Item item, String curiosSlotId) {
+        ensureInitialized();
+        String safeCuriosSlot = curiosSlotId == null || curiosSlotId.isBlank() ? "curio" : curiosSlotId;
+
+        if (item != null) {
+            try {
+                for (TagMapping mapping : tagMappings) {
+                    if (Objects.equals(mapping.curiosSlot, safeCuriosSlot)
+                            && item.builtInRegistryHolder().is(mapping.tag)) {
+                        return mapping.trinketSlot;
+                    }
+                }
+                // 物品带 Trinkets 标签，但当前 Curios 槽位不是标准映射时，仍保留物品自己的原始槽位。
+                for (TagMapping mapping : tagMappings) {
+                    if (item.builtInRegistryHolder().is(mapping.tag)) {
+                        return mapping.trinketSlot;
+                    }
+                }
+            } catch (Exception e) {
+                CurioTrinketBridge.LOGGER.debug("反查物品 {} 的 Trinkets 槽位失败: {}", item, e.getMessage());
+            }
+        }
+
+        for (Map.Entry<String, String> entry : SlotMapper.INSTANCE.getAllMappings().entrySet()) {
+            if (Objects.equals(entry.getValue(), safeCuriosSlot)) {
+                return entry.getKey();
+            }
+        }
+
+        return "curios/" + safeCuriosSlot;
+    }
+
+    /**
      * 清除缓存并重建 tag 映射（在数据包重载时由 {@link SlotMapper} 调用）
      */
     public static void clearCache() {
