@@ -63,10 +63,8 @@ repositories {
 dependencies {
     minecraft "net.minecraftforge:forge:${version_forge}"
 
-    // Curios API - 编译时依赖，运行时由用户安装
+    // Curios API - 编译时依赖，运行时由 Accessories cclayer 提供 Curios API
     compileOnly fg.deobf("top.theillusivec4.curios:curios-forge:${version_curios}:api")
-    // 统一 UI 需要在编译期访问 Curios 的菜单与槽位实现类；仍然不打包进本模组
-    compileOnly fg.deobf("top.theillusivec4.curios:curios-forge:${version_curios}")
     runtimeOnly fg.deobf("top.theillusivec4.curios:curios-forge:${version_curios}")
 
     // Mixin 注解处理器

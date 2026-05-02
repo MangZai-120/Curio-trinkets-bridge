@@ -3,6 +3,7 @@ package com.mangzai.curiotrinketbridge.mixin;
 import com.mangzai.curiotrinketbridge.CurioTrinketBridge;
 import com.mangzai.curiotrinketbridge.bridge.CuriosTrinketsMirror;
 import com.mangzai.curiotrinketbridge.bridge.FakeTrinketInventory;
+import com.mangzai.curiotrinketbridge.bridge.TrinketSlotDiscovery;
 import com.mangzai.curiotrinketbridge.bridge.TrinketsApiAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -221,6 +222,33 @@ public final class TrinketsBridgeMixins {
                                                  CallbackInfo ci) {
             if (slot != null && slot.getClass().getName().startsWith("dev.emi.trinkets.")) {
                 ci.cancel();
+            }
+        }
+    }
+
+    /**
+     * 让 Accessories/cclayer 能用 Trinkets 原翻译显示桥接生成的自定义槽位名。
+     * cclayer 会读取 curios.identifier.<slot> 作为 Accessories 槽位的备选翻译。
+     */
+    @Mixin(net.minecraft.client.resources.language.ClientLanguage.class)
+    public static abstract class ClientLanguageMixin {
+
+        @Inject(method = "loadFrom(Lnet/minecraft/server/packs/resources/ResourceManager;Ljava/util/List;Z)Lnet/minecraft/client/resources/language/ClientLanguage;",
+            at = @At(value = "INVOKE", target = "Lcom/google/common/collect/ImmutableMap;copyOf(Ljava/util/Map;)Lcom/google/common/collect/ImmutableMap;", remap = false),
+            remap = false,
+                locals = org.spongepowered.asm.mixin.injection.callback.LocalCapture.CAPTURE_FAILSOFT)
+        private static void cti$injectTrinketsSlotTranslations(net.minecraft.server.packs.resources.ResourceManager resourceManager,
+                                                              java.util.List<String> filenames,
+                                                              boolean defaultRightToLeft,
+                                                              CallbackInfoReturnable<net.minecraft.client.resources.language.ClientLanguage> cir,
+                                                              Map<String, String> translations) {
+            if (translations == null) return;
+
+            for (TrinketSlotDiscovery.DiscoveredSlot slot : TrinketSlotDiscovery.getOrScan().values()) {
+                String translated = translations.get("trinkets.slot." + slot.group() + "." + slot.slot());
+                if (translated == null) translated = translations.get("trinkets.slot." + slot.slot());
+                if (translated == null) continue;
+                translations.putIfAbsent("curios.identifier." + slot.curiosSlotId(), translated);
             }
         }
     }
