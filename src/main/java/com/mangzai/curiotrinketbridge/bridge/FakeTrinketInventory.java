@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
@@ -118,6 +119,7 @@ public final class FakeTrinketInventory {
         Object inv = buildInventory(normalizeTrinketSlotId(trinketSlotId), safeIndices.length);
         if (inv != null) {
             LINKED_INVENTORIES.put(inv, new LinkedInventory(handler, safeIndices));
+            fillLinkedStacks(inv, handler, safeIndices);
         }
         return inv;
     }
@@ -200,6 +202,27 @@ public final class FakeTrinketInventory {
         if (trinketSlotId == null || trinketSlotId.isBlank()) return "curios/curio";
         String cleaned = trinketSlotId.replace('\\', '/');
         return cleaned.indexOf('/') > 0 ? cleaned : "curios/" + cleaned;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void fillLinkedStacks(Object inv, IDynamicStackHandler handler, int[] indices) {
+        if (inv == null || handler == null || indices == null) return;
+        try {
+            Class<?> nnl = Class.forName("net.minecraft.core.NonNullList");
+            Method withSize = nnl.getMethod("withSize", int.class, Object.class);
+            Object linkedStacks = withSize.invoke(null, indices.length, ItemStack.EMPTY);
+            if (linkedStacks instanceof List list) {
+                for (int i = 0; i < indices.length; i++) {
+                    int curiosIndex = indices[i];
+                    if (curiosIndex >= 0 && curiosIndex < handler.getSlots()) {
+                        list.set(i, handler.getStackInSlot(curiosIndex));
+                    }
+                }
+            }
+            setField(trinketInvClass, inv, "stacks", linkedStacks);
+        } catch (Throwable t) {
+            CurioTrinketBridge.LOGGER.debug("[FakeTrinketInventory] 写入链接栈快照失败: {}", t.toString());
+        }
     }
 
     private static void setField(Class<?> cls, Object instance, String fieldName, Object value) {
