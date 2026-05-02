@@ -297,5 +297,21 @@ public final class TrinketsBridgeMixins {
             net.minecraft.world.item.ItemStack held = player.getItemInHand(hand);
             cir.setReturnValue(net.minecraft.world.InteractionResultHolder.pass(held));
         }
+
+        @Inject(method = "equipItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;)Z",
+                at = @At("HEAD"), cancellable = true, require = 0)
+        private static void cti$cancelEquipItemLiving(net.minecraft.world.entity.LivingEntity user,
+                                                      net.minecraft.world.item.ItemStack stack,
+                                                      CallbackInfoReturnable<Boolean> cir) {
+            cir.setReturnValue(false);
+        }
+
+        @Inject(method = "equipItem(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/item/ItemStack;)Z",
+                at = @At("HEAD"), cancellable = true, require = 0)
+        private static void cti$cancelEquipItemPlayer(net.minecraft.world.entity.player.Player user,
+                                                      net.minecraft.world.item.ItemStack stack,
+                                                      CallbackInfoReturnable<Boolean> cir) {
+            cir.setReturnValue(false);
+        }
     }
 }

@@ -133,6 +133,7 @@ public class BridgeEventHandler {
         if (!TrinketDetector.isTrinketsLoaded()) return;
         try {
             for (ServerPlayer sp : event.getServer().getPlayerList().getPlayers()) {
+                TrinketsItemMigrator.purgeDuplicates(sp);
                 CuriosTrinketLifecycleTracker.tick(sp);
             }
         } catch (Throwable t) {

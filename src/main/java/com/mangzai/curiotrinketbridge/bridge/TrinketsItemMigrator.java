@@ -41,6 +41,42 @@ public final class TrinketsItemMigrator {
     private record PendingMigration(Object slotRef, ItemStack stack, String trinketSlotId) {}
 
     /**
+     * 清理 Curios 已存在同款时真实 trinkets 库存里的副本。
+     *
+     * <p>这是防复制兜底：即使某个原生 TrinketItem.equipItem 路径绕过了右键事件，下一 tick
+     * 也会把 trinkets 真库存中的重复栈移除，保证最终只保留 Curios 作为唯一装备源。
+     */
+    public static void purgeDuplicates(ServerPlayer player) {
+        if (player == null) return;
+        Object component = TrinketsApiAccess.getComponent(player);
+        if (component == null) return;
+
+        List<PendingMigration> pending = new ArrayList<>();
+        CuriosTrinketsMirror.SUPPRESS_MIRROR.set(true);
+        try {
+            TrinketsApiAccess.forEachEquipped(component, (slotRef, stack) -> {
+                if (stack.isEmpty()) return;
+                String slotId = TrinketsApiAccess.slotIdOfRef(slotRef);
+                if (slotId == null) return;
+                pending.add(new PendingMigration(slotRef, stack.copy(), slotId));
+            });
+        } finally {
+            CuriosTrinketsMirror.SUPPRESS_MIRROR.set(false);
+        }
+
+        int removed = 0;
+        for (PendingMigration pm : pending) {
+            if (!hasEquivalentInCurios(player, pm.stack)) continue;
+            TrinketsApiAccess.setStackAt(pm.slotRef, ItemStack.EMPTY);
+            removed++;
+        }
+        if (removed > 0) {
+            CurioTrinketBridge.LOGGER.debug("[Migrator] {}: 已清理 {} 个 trinkets 重复副本",
+                    player.getGameProfile().getName(), removed);
+        }
+    }
+
+    /**
      * 对单个玩家执行一次迁移扫描。
      */
     public static void migrate(ServerPlayer player) {
@@ -130,6 +166,25 @@ public final class TrinketsItemMigrator {
             }
         });
         return holder[0];
+    }
+
+    private static boolean hasEquivalentInCurios(ServerPlayer player, ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        final boolean[] found = {false};
+        CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
+            for (Map.Entry<String, ICurioStacksHandler> entry : handler.getCurios().entrySet()) {
+                if (found[0]) return;
+                IDynamicStackHandler stacks = entry.getValue().getStacks();
+                for (int i = 0; i < stacks.getSlots(); i++) {
+                    ItemStack equipped = stacks.getStackInSlot(i);
+                    if (!equipped.isEmpty() && ItemStack.isSameItemSameTags(equipped, stack)) {
+                        found[0] = true;
+                        return;
+                    }
+                }
+            }
+        });
+        return found[0];
     }
 
     /**
