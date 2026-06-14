@@ -22,24 +22,25 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 灏?Trinket (Fabric) 鐗╁搧閫傞厤涓?Curios 鐨?ICurioItem銆?
+ * 将 Trinket (Fabric) 物品适配为 Curios 的 ICurioItem。
  *
- * <p>鏈€傞厤鍣ㄩ€氳繃 {@link TrinketDetector} 鎻愪緵鐨勫叡浜弽灏勭紦瀛樿皟鐢?Trinket 鎺ュ彛鏂规硶锛?
- * 瀹炵幇 Trinket 涓?Curios 涔嬮棿鐨勭敓鍛藉懆鏈熸ˉ鎺ワ細
+ * <p>本适配器通过 {@link TrinketDetector} 提供的共享反射缓存调用 Trinket 接口方法，
+ * 实现 Trinket 与 Curios 之间的生命周期桥接：
  * <ul>
- *   <li>tick 鈫?curioTick</li>
- *   <li>onEquip 鈫?onEquip</li>
- *   <li>onUnequip 鈫?onUnequip</li>
- *   <li>canEquip 鈫?canEquip</li>
- *   <li>canUnequip 鈫?canUnequip</li>
- *   <li>getModifiers 鈫?getAttributeModifiers</li>
- *   <li>getDropRule 鈫?getDropRule</li>
+ *   <li>tick → curioTick</li>
+ *   <li>onEquip → onEquip</li>
+ *   <li>onUnequip → onUnequip</li>
+ *   <li>canEquip → canEquip</li>
+ *   <li>canUnequip → canUnequip</li>
+ *   <li>getModifiers → getAttributeModifiers</li>
+ *   <li>getDropRule → getDropRule</li>
  * </ul>
  *
- * <p>鎵€鏈夊弽灏?Method 瀵硅薄閮界紦瀛樺湪 TrinketDetector 闈欐€佸瓧娈典腑锛屾墍鏈?adapter 瀹炰緥鍏辩敤锛?
- * 閬垮厤姣忎釜 Trinket 鐗╁搧鍒涘缓涓€浠界嫭绔嬬紦瀛樺鑷村唴瀛樻氮璐广€?
+ * <p>所有反射 Method 对象都缓存在 TrinketDetector 静态字段中，所有 adapter 实例共用，
+ * 避免每个 Trinket 物品创建一份独立缓存导致内存浪费。
  */
 public class TrinketCurioAdapter implements ICurioItem {
+
 
     private final Item trinketItem;
     private final Object trinketHandler; // 实际的 Trinket 行为处理器（可能是 item 本身或独立对象）
@@ -64,12 +65,13 @@ public class TrinketCurioAdapter implements ICurioItem {
     }
 
     /**
-     * 鍒涘缓涓€涓?SlotReference 瀵硅薄锛堥€氳繃鍏变韩鏋勯€犲櫒缂撳瓨锛夈€?
-     * SlotReference 鏄竴涓?record(TrinketInventory inventory, int index)銆?
-     * 浣跨敤 {@link FakeTrinketInventory} 鎻愪緵鐨勪吉瀹炰緥浠ｆ浛 null锛?
-     * 鍑忓皯 Trinket 鍐呴儴璁块棶 inventory() 鏃剁殑 NPE 椋庨櫓銆?
+     * 创建一个 SlotReference 对象（通过共享构造器缓存）。
+     * SlotReference 是一个 record(TrinketInventory inventory, int index)。
+     * 使用 {@link FakeTrinketInventory} 提供的伪实例代替 null，
+     * 减少 Trinket 内部访问 inventory() 时的 NPE 风险。
      */
     private Object createSlotReference(SlotContext slotContext) {
+
         Constructor<?> ctor = TrinketDetector.getSlotReferenceConstructor();
         if (ctor == null) return null;
         try {
@@ -139,7 +141,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
     @Override
     public boolean canEquip(SlotContext slotContext, ItemStack stack) {
-        // 棣栧厛閫氳繃鏍囩鏄犲皠妫€鏌ユ鐗╁搧鏄惁閫傚悎褰撳墠 Curios 妲戒綅
+        // 首先通过标签映射检查此物品是否适合当前 Curios 槽位
         if (!TrinketSlotResolver.canEquipInSlot(trinketItem, slotContext.identifier())) {
             return false;
         }
@@ -149,7 +151,7 @@ public class TrinketCurioAdapter implements ICurioItem {
 
         try {
             Object slotRef = createSlotReference(slotContext);
-            if (slotRef == null) return true; // 鏃犳硶鏋勯€?SlotReference锛屽凡閫氳繃鏍囩鏍￠獙
+            if (slotRef == null) return true; // 无法构造 SlotReference，已通过标签校验
             Object result = m.invoke(trinketHandler, stack, slotRef, slotContext.entity());
             return !(result instanceof Boolean b) || b;
         } catch (Exception e) {
