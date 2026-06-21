@@ -1,0 +1,103 @@
+name: Build & Pre-release
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+      - 'pre*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: '版本号后缀（如 beta.2, rc.1）'
+        required: false
+        default: ''
+      release_notes:
+        description: '发布说明（可选）'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew build --no-daemon
+
+      - name: Extract version
+        id: version
+        run: |
+          # 从 gradle.properties 读取 mod_version
+          MOD_VERSION=$(grep "^mod_version=" gradle.properties | cut -d'=' -f2)
+          echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
+          
+          # 生成构建编号
+          BUILD_NUM=${{ github.run_number }}
+          echo "build_num=$BUILD_NUM" >> $GITHUB_OUTPUT
+          
+          # 组合完整版本：mod_version + 输入后缀 + 构建号
+          if [ -n "${{ github.event.inputs.version_bump }}" ]; then
+            FULL_VERSION="${MOD_VERSION}-${{ github.event.inputs.version_bump }}+build.${BUILD_NUM}"
+          else
+            FULL_VERSION="${MOD_VERSION}+build.${BUILD_NUM}"
+          fi
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $FULL_VERSION"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.full_version }}
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Create Pre-release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pre-${{ steps.version.outputs.full_version }}
+          name: "Pre-release ${{ steps.version.outputs.full_version }}"
+          body: |
+            ## Curios Trinkets Bridge - 自动构建
+            
+            **版本:** `${{ steps.version.outputs.full_version }}`
+            **Minecraft:** `1.20.1`
+            **Forge:** `47.4.0+`
+            **Curios:** `5.14.1+`
+            
+            ### 构建信息
+            - 触发事件: `${{ github.event_name }}`
+            - 提交: `${{ github.sha }}`
+            - 构建编号: `#${{ github.run_number }}`
+            - 构建时间: `${{ github.event.head_commit.timestamp || 'N/A' }}`
+            
+            ${{ github.event.inputs.release_notes && '### 额外说明' || '' }}
+            ${{ github.event.inputs.release_notes }}
+            
+            > ⚠️ 这是**预发布版本**，仅供测试使用，可能存在未知问题。
+            > 如需稳定版本，请等待正式 Release。
+          prerelease: true
+          files: build/libs/*.jar
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
