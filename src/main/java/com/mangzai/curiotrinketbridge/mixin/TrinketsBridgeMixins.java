@@ -208,20 +208,40 @@ public final class TrinketsBridgeMixins {
     }
 
     /**
-     * 跳过 trinkets 自身槽位在 vanilla AbstractContainerScreen.renderSlot 中的渲染。
-     * 因为 vanilla 的 renderSlot 不检查 isEnabled / isActive，仅靠 SurvivalTrinketSlotMixin 无法让圆形槽位消失。
+     * 在 vanilla AbstractContainerScreen 层隐藏 trinkets 槽位：取消其渲染并禁止 hover/点击，
+     * 使背包里只显示 Curios 原生槽位。
+     *
+     * <p>关键：本桥是 Forge 模组、reobf 到 SRG，生产运行时 vanilla 方法是 SRG 名
+     * （renderSlot=m_280092_、isHovering(Slot,DD)=m_97774_）。本工程无 refmap，故 remap=false 直接给 SRG 名
+     * （生产命中）；同时附官方名作 dev 兑底，require=0 保证任一环境都不崩。
+     * 按槽位运行时类名 {@code dev.emi.trinkets.*} 判定，与混淆映射无关（Connector 保留 Fabric 包名）。
      */
     @Mixin(net.minecraft.client.gui.screens.inventory.AbstractContainerScreen.class)
     public static abstract class AbstractContainerScreenSlotMixin {
 
-        @Inject(method = "renderSlot(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/world/inventory/Slot;)V",
-                at = @At("HEAD"), cancellable = true, remap = false)
+        @Inject(method = {"m_280092_", "renderSlot"}, at = @At("HEAD"),
+                cancellable = true, remap = false, require = 0)
         private void cti$cancelTrinketSlotRender(net.minecraft.client.gui.GuiGraphics gfx,
                                                  net.minecraft.world.inventory.Slot slot,
                                                  CallbackInfo ci) {
-            if (slot != null && slot.getClass().getName().startsWith("dev.emi.trinkets.")) {
+            if (cti$isTrinketSlot(slot)) {
                 ci.cancel();
             }
+        }
+
+        @Inject(method = {"m_97774_", "isHovering(Lnet/minecraft/world/inventory/Slot;DD)Z"},
+                at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+        private void cti$noHoverTrinketSlot(net.minecraft.world.inventory.Slot slot,
+                                            double mouseX, double mouseY,
+                                            CallbackInfoReturnable<Boolean> cir) {
+            if (cti$isTrinketSlot(slot)) {
+                cir.setReturnValue(false);
+            }
+        }
+
+        @Unique
+        private static boolean cti$isTrinketSlot(net.minecraft.world.inventory.Slot slot) {
+            return slot != null && slot.getClass().getName().startsWith("dev.emi.trinkets.");
         }
     }
 
